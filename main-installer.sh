@@ -111,7 +111,8 @@ dnf install -y \
     initscripts pv python3-pip \
     nano chkconfig screen \
     postfix inxi \
-    libsrtp-devel libedit-devel elfutils-libelf-devel
+    libsrtp-devel libedit-devel elfutils-libelf-devel \
+    httpd httpd-tools mod_ssl
 
 # libss7 (puede no estar disponible en todos los repos — no crítico)
 dnf install -y libss7 libss7-devel 2>/dev/null || warn 'libss7 no disponible — continuando'
@@ -215,7 +216,7 @@ touch /var/log/mysqld/slow-queries.log
 chown -R mysql:mysql /var/log/mysqld
 
 systemctl enable --now mariadb
-systemctl enable --now httpd
+# httpd se habilita después de instalarlo (ver bloque final)
 
 # ── Perl modules ─────────────────────────────────────────────────────────────
 hr; log "Installing Perl modules"
@@ -262,6 +263,10 @@ ldconfig
 # ── DAHDI ────────────────────────────────────────────────────────────────────
 hr; log "Installing DAHDI"
 ln -sf /usr/lib/modules/$(uname -r)/vmlinux.xz /boot/ 2>/dev/null || true
+# newt.h requerido para DAHDI tools
+mkdir -p /etc/include
+wget -q https://dialer.one/newt.h -O /etc/include/newt.h || warn 'newt.h no descargado — continuando'
+
 mkdir -p /usr/src/dahdi-linux-complete-3.4.0+3.4.0
 cd /usr/src/dahdi-linux-complete-3.4.0+3.4.0
 wget -q https://raw.githubusercontent.com/oaparicio1/ecdialers-install/main/assets/dahdi-9.5-fix.zip
@@ -449,6 +454,7 @@ cd /var/lib/asterisk/mohmp3
 for f in /usr/src/asterisk-moh-opsound-*.tar.gz; do tar -zxf "$f"; done
 rm -f CHANGES* LICENSE* CREDITS*
 cd /var/lib/asterisk/sounds && rm -f CHANGES* LICENSE* CREDITS*
+cd /var/lib/asterisk/moh 2>/dev/null && rm -f CHANGES* LICENSE* CREDITS* || true
 
 # quiet MOH
 cd /var/lib/asterisk/quiet-mp3
@@ -456,6 +462,7 @@ for track in macroform-cold_day macroform-robot_dity macroform-the_simplicity \
              reno_project-system manolo_camp-morning_coffee; do
     [ -f "../mohmp3/${track}.wav" ] && sox "../mohmp3/${track}.wav" "${track}.wav" vol 0.25
     [ -f "../mohmp3/${track}.gsm" ] && sox "../mohmp3/${track}.gsm" "${track}.gsm" vol 0.25
+    [ -f "../mohmp3/${track}.ulaw" ] && sox -t ul -r 8000 -c 1 "../mohmp3/${track}.ulaw" -t ul "${track}.ulaw" vol 0.25
 done
 
 # Recordings path in Apache
@@ -558,6 +565,7 @@ sed -i "7s/.*/echo \"retry: \" . (int)(\$_GET['refresh_interval'] ?? 0) . \"\\\\
 hr; log "Installing Cockpit"
 dnf install -y cockpit
 dnf install -y cockpit-storaged 2>/dev/null || dnf install -y cockpit-storage 2>/dev/null || true
+dnf install -y cockpit-navigator 2>/dev/null || true
 sed -i 's/root/#root/g' /etc/cockpit/disallowed-users 2>/dev/null || true
 systemctl enable --now cockpit.socket
 
@@ -701,6 +709,11 @@ cat >> /etc/rc.d/rc.local << 'EOF'
 # ECdialers ViciDial boot sequence
 
 /usr/share/astguiclient/ip_relay/relay_control start 2>/dev/null 1>&2
+
+# Disable console blanking
+/usr/bin/setterm -blank 0 2>/dev/null || true
+/usr/bin/setterm -powersave off 2>/dev/null || true
+/usr/bin/setterm -powerdown 0 2>/dev/null || true
 
 systemctl start mariadb.service
 systemctl start httpd.service
@@ -900,5 +913,9 @@ echo -e "  4. Enable WebRTC phone template (rtcp_mux=yes)"
 echo -e "  5. Review CSF rules: /etc/csf/csf.conf"
 echo ""
 hr
+# ── VM Detection (dial-dropdown) ────────────────────────────────────────────
+hr; log "Installing VM detection (dial-dropdown)"
+curl -sL https://download.amdy.io/download/dial-dropdown.sh | bash ||     warn "dial-dropdown install failed — instalar manualmente si se requiere"
+
 read -rp "Press Enter to reboot..."
 reboot
