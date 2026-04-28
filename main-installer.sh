@@ -144,9 +144,10 @@ EOF
 # Set timezone in php.ini
 sed -i "s|;date.timezone =|date.timezone = ${TIMEZONE}|" /etc/php.ini
 # browscap for ECPhone access log
-echo "browscap = /etc/php/browscap.ini" >> /etc/php.ini
-wget -q -O /etc/php/browscap.ini https://browscap.org/stream?q=Lite_PHP_BrowsCap || \
-    touch /etc/php/browscap.ini
+mkdir -p /etc/php.d
+echo "browscap = /etc/php.d/browscap.ini" >> /etc/php.ini
+wget -q -O /etc/php.d/browscap.ini https://browscap.org/stream?q=Lite_PHP_BrowsCap || \
+    touch /etc/php.d/browscap.ini
 
 # ── MariaDB ──────────────────────────────────────────────────────────────────
 hr; log "Installing MariaDB"
