@@ -95,6 +95,15 @@ dnf install -y https://rpms.remirepo.net/enterprise/remi-release-9.rpm
 dnf module enable php:remi-7.4 -y
 # MariaDB 10.5 via repo oficial (AlmaLinux 9 no tiene module stream mariadb:10.5)
 curl -LsS https://downloads.mariadb.com/MariaDB/mariadb_repo_setup |     bash -s -- --mariadb-server-version=mariadb-10.5 --skip-maxscale --skip-tools
+
+# Excluir mysql* del repo base para evitar conflictos con MariaDB
+# (perl-DBD-MySQL jala mysql-common que choca con MariaDB-common)
+for repo_file in /etc/yum.repos.d/almalinux*.repo /etc/yum.repos.d/epel*.repo; do
+    [ -f "$repo_file" ] && grep -q "^exclude=" "$repo_file" ||         sed -i '/^\[/a exclude=mysql*' "$repo_file" 2>/dev/null || true
+done
+# Alternativa directa: exclude en dnf.conf
+grep -q "^exclude=mysql" /etc/dnf/dnf.conf ||     echo "exclude=mysql*" >> /etc/dnf/dnf.conf
+log "MySQL excluido de repos base — usando MariaDB 10.5 exclusivamente ✓"
 dnf install -y dnf-plugins-core
 dnf config-manager --set-enabled crb
 
@@ -108,7 +117,7 @@ dnf install -y \
     newt-devel libxml2-devel kernel-devel sqlite-devel \
     libuuid-devel sox lame-devel htop iftop atop \
     perl-File-Which \
-    initscripts pv python3-pip \
+    initscripts pv python3-pip libxcrypt-compat \
     nano chkconfig screen \
     postfix inxi \
     libsrtp-devel libedit-devel elfutils-libelf-devel \
@@ -219,17 +228,17 @@ systemctl enable --now mariadb
 # httpd se habilita después de instalarlo (ver bloque final)
 
 # ── Perl modules ─────────────────────────────────────────────────────────────
-hr; log "Installing Perl modules"
+hr; log "Installing Perl base modules via dnf"
+# Solo los módulos base que NO traen mysql-common como dependencia
 dnf install -y \
     perl-CPAN perl-YAML perl-CPAN-DistnameInfo perl-libwww-perl \
-    perl-DBI perl-DBD-MySQL perl-GD perl-Env \
-    perl-Term-ReadLine-Gnu perl-SelfLoader perl-open
+    perl-GD perl-Env perl-Term-ReadLine-Gnu perl-SelfLoader perl-open
 
+hr; log "Installing Perl CPAN modules via CPM (includes DBD::MySQL)"
+# CPM instala DBD::MySQL sin depender de mysql-common del sistema
 INSTALLER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "${INSTALLER_DIR}/cpanfile" ]; then
-    curl -fsSL https://raw.githubusercontent.com/skaji/cpm/main/cpm | perl - install -g App::cpm
-    cd "${INSTALLER_DIR}" && /usr/local/bin/cpm install -g
-fi
+curl -fsSL https://raw.githubusercontent.com/skaji/cpm/main/cpm | perl - install -g App::cpm
+cd "${INSTALLER_DIR}" && /usr/local/bin/cpm install -g
 
 # Asterisk Perl
 cd /usr/src
@@ -477,6 +486,11 @@ Alias /RECORDINGS/MP3 "/var/spool/asterisk/monitorDONE/MP3/"
     Require all granted
 </Directory>
 EOF
+
+# ── Sounds web folder ────────────────────────────────────────────────────────
+log "Copying sounds to web-accessible folder"
+mkdir -p /var/www/html/hgcjvmrjzqcngw47wf5zf4xjzd9n0k
+cp -r /var/lib/asterisk/sounds/* /var/www/html/hgcjvmrjzqcngw47wf5zf4xjzd9n0k/ 2>/dev/null || true
 
 # ── ip_relay ──────────────────────────────────────────────────────────────────
 hr; log "Building ip_relay"
@@ -767,13 +781,16 @@ cat > /root/crontab-file << 'CRONTAB'
 1,4,7,10,13,16,19,22,25,28,31,34,37,40,43,46,49,52,55,58 * * * * /usr/share/astguiclient/AST_CRON_audio_2_compress.pl --MP3 --HTTPS
 
 ### Keepalive
-* * * * * /usr/share/astguiclient/ADMIN_keepalive_ALL.pl
+* * * * * /usr/share/astguiclient/ADMIN_keepalive_ALL.pl --cu3way
 
 ### Kill hung congested calls
 * * * * * /usr/share/astguiclient/AST_manager_kill_hung_congested.pl
 
 ### Voicemail updater
 * * * * * /usr/share/astguiclient/AST_vm_update.pl
+
+### Conference validator
+* * * * * /usr/share/astguiclient/AST_conf_update.pl
 
 ### Flush DB queue hourly
 11 * * * * /usr/share/astguiclient/AST_flush_DBqueue.pl -q
