@@ -251,7 +251,7 @@ hr; log "Installing DAHDI"
 ln -sf /usr/lib/modules/$(uname -r)/vmlinux.xz /boot/ 2>/dev/null || true
 mkdir -p /usr/src/dahdi-linux-complete-3.4.0+3.4.0
 cd /usr/src/dahdi-linux-complete-3.4.0+3.4.0
-wget -q https://cybur-dial.com/dahdi-9.5-fix.zip
+wget -q https://raw.githubusercontent.com/oaparicio1/ecdialers-install/main/assets/dahdi-9.5-fix.zip
 unzip -q dahdi-9.5-fix.zip
 dnf install -y newt newt-devel
 make clean && make && make install && make install-config
@@ -468,11 +468,10 @@ make 2>/dev/null && cp ip_relay ip_relay2 && \
     warn "ip_relay build skipped (non-critical)"
 
 # ── G.729 codec ───────────────────────────────────────────────────────────────
-hr; log "Installing G.729 codec"
-cd /usr/lib64/asterisk/modules
-wget -q http://asterisk.hosting.lv/bin/codec_g729-ast160-gcc4-glibc-x86_64-core2-sse4.so \
-    -O codec_g729.so && chmod 755 codec_g729.so || \
-    warn "G.729 codec download failed — install manually if needed"
+# G.729 requiere licencia comercial. Instalar manualmente si se requiere:
+#   cd /usr/lib64/asterisk/modules
+#   wget -O codec_g729.so TU_FUENTE/codec_g729-ast18-x86_64.so && chmod 755 codec_g729.so
+warn "G.729 omitido — install manually if needed"
 
 # ── ConfBridge ────────────────────────────────────────────────────────────────
 hr; log "Setting up ConfBridge"
