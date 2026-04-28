@@ -229,8 +229,9 @@ systemctl enable --now mariadb
 
 # ── Perl modules ─────────────────────────────────────────────────────────────
 hr; log "Installing Perl base modules via dnf"
-# Solo los módulos base que NO traen mysql-common como dependencia
-dnf install -y \
+# --exclude=mysql* evita que cualquier dep chain jale mysql-common
+# que conflictua con MariaDB-common ya instalado
+dnf install -y --exclude=mysql* \
     perl-CPAN perl-YAML perl-CPAN-DistnameInfo perl-libwww-perl \
     perl-GD perl-Env perl-Term-ReadLine-Gnu perl-SelfLoader perl-open
 
@@ -324,6 +325,11 @@ make menuselect/menuselect menuselect-tree menuselect.makeopts
 menuselect/menuselect --enable app_meetme        menuselect.makeopts
 menuselect/menuselect --enable res_http_websocket menuselect.makeopts
 menuselect/menuselect --enable res_srtp          menuselect.makeopts
+
+# Crear directorios requeridos por make samples
+mkdir -p /var/lib/asterisk/phoneprov
+mkdir -p /var/lib/asterisk/sounds
+mkdir -p /var/spool/asterisk/voicemail/default/1234/INBOX
 
 make samples
 sed -i 's|noload = chan_sip.so|;noload = chan_sip.so|g' /etc/asterisk/modules.conf
