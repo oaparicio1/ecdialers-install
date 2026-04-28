@@ -93,7 +93,8 @@ dnf groupinstall "Development Tools" -y
 dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 dnf install -y https://rpms.remirepo.net/enterprise/remi-release-9.rpm
 dnf module enable php:remi-7.4 -y
-dnf module enable mariadb:10.5 -y
+# MariaDB 10.5 via repo oficial (AlmaLinux 9 no tiene module stream mariadb:10.5)
+curl -LsS https://downloads.mariadb.com/MariaDB/mariadb_repo_setup |     bash -s -- --mariadb-server-version=mariadb-10.5 --skip-maxscale --skip-tools
 dnf install -y dnf-plugins-core
 dnf config-manager --set-enabled crb
 
@@ -106,11 +107,14 @@ dnf install -y \
     perl-libwww-perl ImageMagick \
     newt-devel libxml2-devel kernel-devel sqlite-devel \
     libuuid-devel sox lame-devel htop iftop atop \
-    perl-File-Which libss7 libss7-devel \
+    perl-File-Which \
     initscripts pv python3-pip \
     nano chkconfig screen \
     postfix inxi \
     libsrtp-devel libedit-devel elfutils-libelf-devel
+
+# libss7 (puede no estar disponible en todos los repos — no crítico)
+dnf install -y libss7 libss7-devel 2>/dev/null || warn 'libss7 no disponible — continuando'
 
 dnf install -y sngrep bind-utils
 
@@ -164,20 +168,19 @@ max_allowed_packet = 32M
 skip-external-locking
 sql_mode="NO_ENGINE_SUBSTITUTION"
 log-error = /var/log/mysqld/mysqld.log
-query-cache-type = 1
-query-cache-size = 32M
+# query-cache-type y query-cache-size removidos en MariaDB 10.5
 long_query_time = 1
 tmp_table_size = 128M
 table_cache = 1024
 join_buffer_size = 1M
-key_buffer = 512M
+key_buffer_size = 512M
 sort_buffer_size = 6M
 read_buffer_size = 4M
 read_rnd_buffer_size = 16M
 myisam_sort_buffer_size = 64M
 max_tmp_tables = 64
 thread_cache_size = 8
-thread_concurrency = 8
+# thread_concurrency deprecado en MariaDB 10.5
 
 [mysqldump]
 quick
@@ -187,13 +190,13 @@ max_allowed_packet = 16M
 no-auto-rehash
 
 [isamchk]
-key_buffer = 256M
+key_buffer_size = 256M
 sort_buffer_size = 256M
 read_buffer = 2M
 write_buffer = 2M
 
 [myisamchk]
-key_buffer = 256M
+key_buffer_size = 256M
 sort_buffer_size = 256M
 read_buffer = 2M
 write_buffer = 2M
@@ -231,11 +234,16 @@ perl Makefile.PL && make all && make install
 
 # ── Lame ─────────────────────────────────────────────────────────────────────
 hr; log "Installing Lame"
-cd /usr/src
-wget -q http://downloads.sourceforge.net/project/lame/lame/3.99/lame-3.99.5.tar.gz
-tar -zxf lame-3.99.5.tar.gz
-cd lame-3.99.5
-./configure && make && make install
+# Intentar desde RPM Fusion primero, si falla compilar desde fuente
+dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm 2>/dev/null || true
+dnf install -y lame lame-devel 2>/dev/null || {
+    warn "RPM Fusion lame no disponible — compilando desde fuente"
+    cd /usr/src
+    wget -q http://downloads.sourceforge.net/project/lame/lame/3.99/lame-3.99.5.tar.gz
+    tar -zxf lame-3.99.5.tar.gz
+    cd lame-3.99.5
+    ./configure && make && make install
+}
 
 # ── Jansson ──────────────────────────────────────────────────────────────────
 hr; log "Installing Jansson"
@@ -261,8 +269,8 @@ cp /etc/dahdi/system.conf.sample /etc/dahdi/system.conf
 modprobe dahdi 2>/dev/null || true
 modprobe dahdi_dummy 2>/dev/null || true
 /usr/sbin/dahdi_cfg -vvv 2>/dev/null || true
-systemctl enable dahdi
-service dahdi start || true
+systemctl enable dahdi 2>/dev/null || true
+systemctl start dahdi 2>/dev/null || service dahdi start 2>/dev/null || true
 
 read -rp "DAHDI done. Press Enter to continue with Asterisk..."
 
@@ -543,7 +551,8 @@ sed -i "7s/.*/echo \"retry: \" . (int)(\$_GET['refresh_interval'] ?? 0) . \"\\\\
 
 # ── Cockpit ───────────────────────────────────────────────────────────────────
 hr; log "Installing Cockpit"
-dnf install -y cockpit cockpit-storaged
+dnf install -y cockpit
+dnf install -y cockpit-storaged 2>/dev/null || dnf install -y cockpit-storage 2>/dev/null || true
 sed -i 's/root/#root/g' /etc/cockpit/disallowed-users 2>/dev/null || true
 systemctl enable --now cockpit.socket
 
@@ -834,8 +843,37 @@ cat > /etc/ssh/sshd_banner << 'EOF'
 EOF
 
 # ── Final summary ─────────────────────────────────────────────────────────────
-hr
-echo -e "${BOLD}${GREEN}✅  ECdialers ViciDial Installation Complete!${NC}"
+sleep 1
+clear
+echo -e "\033[0;32m"
+echo "    ███████╗ ██████╗    ██████╗ ██╗ █████╗ ██╗     ███████╗██████╗ ███████╗"
+echo "    ██╔════╝██╔════╝    ██╔══██╗██║██╔══██╗██║     ██╔════╝██╔══██╗██╔════╝"
+echo "    █████╗  ██║         ██║  ██║██║███████║██║     █████╗  ██████╔╝███████╗"
+echo "    ██╔══╝  ██║         ██║  ██║██║██╔══██║██║     ██╔══╝  ██╔══██╗╚════██║"
+echo "    ███████╗╚██████╗    ██████╔╝██║██║  ██║███████╗███████╗██║  ██║███████║"
+echo "    ╚══════╝ ╚═════╝    ╚═════╝ ╚═╝╚═╝  ╚═╝╚══════╝╚══════╝╚═╝  ╚═╝╚══════╝"
+echo -e "\033[0m"
+sleep 0.5
+
+echo -e "\033[1;36m"
+echo "              (•_•)"
+echo "              ( •_•)>⌐■-■"
+echo "              (⌐■_■)"
+echo ""
+echo "         INSTALLATION COMPLETE, BOSS."
+echo -e "\033[0m"
+sleep 0.8
+
+echo -e "\033[1;33m"
+echo "  ┌─────────────────────────────────────────────────────────┐"
+echo "  │                                                         │"
+echo "  │   ViciDial is UP. CSF is LOCKED. ECPhone is READY.     │"
+echo "  │   Your dialer just got a whole lot cooler. 😎           │"
+echo "  │                                                         │"
+echo "  └─────────────────────────────────────────────────────────┘"
+echo -e "\033[0m"
+sleep 0.5
+
 hr
 echo ""
 echo -e "  ${BOLD}Server IP:${NC}    ${SERVER_IP}"
