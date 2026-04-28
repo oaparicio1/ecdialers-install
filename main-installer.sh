@@ -11,7 +11,8 @@
 #   chmod +x main-installer.sh
 #   ./main-installer.sh
 # ============================================================================
-set -euo pipefail
+# set -euo pipefail — desactivado para permitir continuar ante errores no críticos
+set -uo pipefail 2>/dev/null || true
 
 # ── Colors ───────────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -224,7 +225,7 @@ mkdir -p /var/log/mysqld
 touch /var/log/mysqld/slow-queries.log
 chown -R mysql:mysql /var/log/mysqld
 
-systemctl enable --now mariadb
+systemctl enable --now mariadb || die 'MariaDB no pudo iniciar — revisar logs: journalctl -u mariadb'
 # httpd se habilita después de instalarlo (ver bloque final)
 
 # ── Perl modules ─────────────────────────────────────────────────────────────
@@ -246,7 +247,7 @@ cd /usr/src
 wget -q http://download.vicidial.com/required-apps/asterisk-perl-0.08.tar.gz
 tar xzf asterisk-perl-0.08.tar.gz
 cd asterisk-perl-0.08
-perl Makefile.PL && make all && make install
+perl Makefile.PL && make all && make install || warn 'asterisk-perl falló — algunos scripts pueden no funcionar'
 
 # ── Lame ─────────────────────────────────────────────────────────────────────
 hr; log "Installing Lame"
@@ -282,9 +283,9 @@ cd /usr/src/dahdi-linux-complete-3.4.0+3.4.0
 wget -q https://raw.githubusercontent.com/oaparicio1/ecdialers-install/main/assets/dahdi-9.5-fix.zip
 unzip -q dahdi-9.5-fix.zip
 dnf install -y newt newt-devel
-make clean && make && make install && make install-config
-dnf install -y dahdi-tools-libs
-cd tools && make clean && make && make install && make install-config
+make clean && make && make install && make install-config || warn 'DAHDI linux build falló — no crítico para WebRTC'
+dnf install -y dahdi-tools-libs 2>/dev/null || true
+cd tools && make clean && make && make install && make install-config || warn 'DAHDI tools build falló'
 cp /etc/dahdi/system.conf.sample /etc/dahdi/system.conf
 modprobe dahdi 2>/dev/null || true
 modprobe dahdi_dummy 2>/dev/null || true
@@ -301,7 +302,7 @@ wget -q https://github.com/cisco/libsrtp/archive/v2.1.0.tar.gz -O libsrtp-2.1.0.
 tar xf libsrtp-2.1.0.tar.gz
 cd libsrtp-2.1.0
 ./configure --prefix=/usr --enable-openssl
-make shared_library && make install
+make shared_library && make install || warn 'libsrtp system install falló — usando bundled de Asterisk'
 ldconfig
 
 # ── Asterisk 18 ──────────────────────────────────────────────────────────────
@@ -331,10 +332,10 @@ mkdir -p /var/lib/asterisk/phoneprov
 mkdir -p /var/lib/asterisk/sounds
 mkdir -p /var/spool/asterisk/voicemail/default/1234/INBOX
 
-make samples
+make samples || warn 'make samples tuvo errores menores — continuando'
 sed -i 's|noload = chan_sip.so|;noload = chan_sip.so|g' /etc/asterisk/modules.conf
 
-make -j "${JOBS}" all && make install
+make -j "${JOBS}" all && make install || die 'Asterisk build falló — revisar errores arriba'
 
 # Fix modules
 cat >> /etc/asterisk/modules.conf << 'EOF'
@@ -357,16 +358,19 @@ eventfilter=Event: Meetme
 eventfilter=Event: Confbridge
 EOF
 
+# Verificar que Asterisk quedó instalado
+[ -f /usr/sbin/asterisk ] || die 'Asterisk no se instaló — revisar errores de compilación'
+log "Asterisk $(/usr/sbin/asterisk -V 2>/dev/null) instalado ✓"
 read -rp "Asterisk done. Press Enter to continue with ViciDial..."
 
 # ── ViciDial (astguiclient) ───────────────────────────────────────────────────
 hr; log "Installing ViciDial (astguiclient trunk)"
 mkdir -p /usr/src/astguiclient && cd /usr/src/astguiclient
-svn checkout svn://svn.eflo.net/agc_2-X/trunk
+svn checkout svn://svn.eflo.net/agc_2-X/trunk || die 'SVN checkout falló — verificar conectividad'
 
 # ── MySQL databases ──────────────────────────────────────────────────────────
 hr; log "Creating MySQL databases and users"
-mysql -u root << MYSQLEOF
+mysql -u root << MYSQLEOF || die 'Error creando DB/usuarios MySQL — revisar MariaDB'
 CREATE DATABASE IF NOT EXISTS asterisk DEFAULT CHARACTER SET utf8 COLLATE utf8_unicode_ci;
 CREATE USER IF NOT EXISTS 'cron'@'localhost' IDENTIFIED BY '${DB_PASS}';
 GRANT SELECT,CREATE,ALTER,INSERT,UPDATE,DELETE,LOCK TABLES ON asterisk.* TO cron@'%' IDENTIFIED BY '${DB_PASS}';
@@ -430,8 +434,11 @@ sed -i "s/SERVERIP/${SERVER_IP}/g" /etc/astguiclient.conf
 # ── ViciDial install.pl ───────────────────────────────────────────────────────
 hr; log "Running ViciDial install.pl"
 cd /usr/src/astguiclient/trunk
-perl install.pl --no-prompt --copy_sample_conf_files=Y
-perl install.pl --no-prompt
+perl install.pl --no-prompt --copy_sample_conf_files=Y || warn 'install.pl fase 1 tuvo advertencias — verificar'
+perl install.pl --no-prompt || warn 'install.pl fase 2 tuvo advertencias — verificar'
+# Verificar que ViciDial quedó instalado correctamente
+[ -f /usr/share/astguiclient/ADMIN_keepalive_ALL.pl ] || die 'ViciDial no se instaló correctamente — revisar output de install.pl'
+log "ViciDial instalado correctamente ✓"'''
 
 # Update server IP
 /usr/share/astguiclient/ADMIN_update_server_ip.pl \
@@ -503,9 +510,7 @@ hr; log "Building ip_relay"
 cd /usr/src/astguiclient/trunk/extras/ip_relay/
 unzip -q ip_relay_1.1.112705.zip 2>/dev/null || true
 cd ip_relay_1.1/src/unix/ 2>/dev/null || true
-make 2>/dev/null && cp ip_relay ip_relay2 && \
-    mv -f ip_relay /usr/bin/ && mv -f ip_relay2 /usr/local/bin/ip_relay || \
-    warn "ip_relay build skipped (non-critical)"
+make 2>/dev/null && cp ip_relay ip_relay2 &&     mv -f ip_relay /usr/bin/ && mv -f ip_relay2 /usr/local/bin/ip_relay &&     log "ip_relay instalado ✓" || warn "ip_relay build falló — monitoreo ciego no disponible (no crítico)""
 
 # ── G.729 codec ───────────────────────────────────────────────────────────────
 # G.729 requiere licencia comercial. Instalar manualmente si se requiere:
@@ -563,8 +568,8 @@ systemctl enable --now certbot-renew.timer
 # Temporarily open 80/443 for certbot validation
 systemctl stop csf 2>/dev/null || true
 certbot --apache -d "${HOSTNAME}" --non-interactive --agree-tos \
-    -m "admin@ecdialers.com" --redirect || \
-    warn "Certbot failed — run manually: certbot --apache -d ${HOSTNAME}"
+    -m "admin@ecdialers.com" --redirect && log "SSL configurado ✓" || \
+    warn "Certbot falló — correr manualmente después: certbot --apache -d ${HOSTNAME}""
 
 # ── WebRTC ────────────────────────────────────────────────────────────────────
 hr; log "Enabling WebRTC in ViciDial"
