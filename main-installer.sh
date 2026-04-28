@@ -116,7 +116,11 @@ dnf install -y \
 # libss7 (puede no estar disponible en todos los repos — no crítico)
 dnf install -y libss7 libss7-devel 2>/dev/null || warn 'libss7 no disponible — continuando'
 
-dnf install -y sngrep bind-utils
+# sngrep (SIP capture tool) — repo de IRONTEC requerido en AlmaLinux 9
+dnf install -y bind-utils
+rpm -q sngrep &>/dev/null || {
+    dnf install -y 'https://packages.irontec.com/rhel/9/noarch/irontec-release-1.0-1.noarch.rpm' 2>/dev/null &&     dnf install -y sngrep 2>/dev/null || warn "sngrep no disponible — instalar manualmente si se necesita"
+}
 
 # ── Kernel headers ───────────────────────────────────────────────────────────
 dnf install -y "kernel-devel-$(uname -r)" "kernel-headers-$(uname -r)" || \
