@@ -23,22 +23,20 @@ warn() { echo -e "${YELLOW}[!!]${NC} $*"; }
 die()  { echo -e "${RED}[ERR]${NC} $*" >&2; exit 1; }
 hr()   { echo -e "${CYAN}==================================================${NC}"; }
 
-# -- Banner -------------------------------------------------------------------
+# ── Banner ───────────────────────────────────────────────────────────────────
 clear
-echo -e "\033[0;36m"
-echo ""
-echo "  ______  ______ ______ _       _____  _      ______  ______ _____  "
-echo " |  ____|/ _____|  ____| |     |_   _|| |    |  ____|/ _____|  __ \ "
-echo " | |__  | |     | |  __| |       | |  | |    | |__  | |     | |__) |"
-echo " |  __| | |     | | |_ | |       | |  | |    |  __| | |     |  _  / "
-echo " | |____| |_____| |__| | |____  _| |_ | |____| |____| |_____| | \ \ "
-echo " |______|\\______|_______|______||_____||______|______|\\_______|_|  \_\\"
-echo ""
-echo -e "\033[0m"
-echo -e "  \033[1mViciDial Installer\033[0m  --  AlmaLinux 9  |  Asterisk 18  |  CSF"
-echo -e "  \033[2mhttps://github.com/oaparicio1/ecdialers-install\033[0m"
-echo -e "  \033[0;36m==================================================\033[0m"
-echo ""
+hr
+echo -e "${BOLD}${CYAN}"
+echo "  ███████╗ ██████╗ ██████╗ ██╗ █████╗ ██╗     ███████╗██████╗ ███████╗"
+echo "  ██╔════╝██╔════╝ ██╔══██╗██║██╔══██╗██║     ██╔════╝██╔══██╗██╔════╝"
+echo "  █████╗  ██║      ██║  ██║██║███████║██║     █████╗  ██████╔╝███████╗"
+echo "  ██╔══╝  ██║      ██║  ██║██║██╔══██║██║     ██╔══╝  ██╔══██╗╚════██║"
+echo "  ███████╗╚██████╗ ██████╔╝██║██║  ██║███████╗███████╗██║  ██║███████║"
+echo "  ╚══════╝ ╚═════╝ ╚═════╝ ╚═╝╚═╝  ╚═╝╚══════╝╚══════╝╚═╝  ╚═╝╚══════╝"
+echo -e "${NC}"
+echo -e "  ${BOLD}ViciDial Installer${NC} — AlmaLinux 9 | Asterisk 18 | CSF"
+echo -e "  https://github.com/oaparicio1/ecdialers-install"
+hr
 echo ""
 
 # -- Verify root --------------------------------------------------------------
@@ -967,37 +965,63 @@ cat > /etc/ssh/sshd_banner << 'EOF'
 +==========================================+
 EOF
 
-# -- Final summary -------------------------------------------------------------
+# ── Final IP update — run LAST after everything is installed ─────────────────
+hr; log "Updating all server IPs from 10.10.10.15 to ${SERVER_IP}"
+
+# Run ADMIN_update_server_ip.pl — updates ALL tables with default IP
+/usr/share/astguiclient/ADMIN_update_server_ip.pl \
+    --old-server_ip=10.10.10.15 --server_ip="${SERVER_IP}" --auto 2>/dev/null && \
+    log "Server IP updated in all ViciDial tables ✓" || \
+    warn "ADMIN_update_server_ip.pl had warnings — check manually"
+
+# Also update directly via SQL to catch anything the script missed
+mysql -u root asterisk --force << IPEOF
+UPDATE servers           SET server_ip='${SERVER_IP}' WHERE server_ip='10.10.10.15';
+UPDATE phones            SET server_ip='${SERVER_IP}' WHERE server_ip='10.10.10.15';
+UPDATE conferences       SET server_ip='${SERVER_IP}' WHERE server_ip='10.10.10.15';
+UPDATE vicidial_conferences SET server_ip='${SERVER_IP}' WHERE server_ip='10.10.10.15';
+UPDATE vicidial_confbridges SET server_ip='${SERVER_IP}' WHERE server_ip='10.10.10.15';
+UPDATE vicidial_campaign_server_stats SET server_ip='${SERVER_IP}' WHERE server_ip='10.10.10.15';
+UPDATE system_settings SET
+    active_voicemail_server='${SERVER_IP}',
+    webphone_url='https://${HOSTNAME}/ECPhone/ecphone.php',
+    sounds_web_server='https://${HOSTNAME}';
+IPEOF
+log "All tables updated to ${SERVER_IP} ✓"
+
+# ── Final summary ────────────────────────────────────────────────────────────
 sleep 1
 clear
+
+# Banner final
 echo -e "\033[0;32m"
-echo "    ???????+ ??????+    ??????+ ??+ ?????+ ??+     ???????+??????+ ???????+"
-echo "    ??+====+??+====+    ??+==??+??|??+==??+??|     ??+====+??+==??+??+====+"
-echo "    ?????+  ??|         ??|  ??|??|???????|??|     ?????+  ??????++???????+"
-echo "    ??+==+  ??|         ??|  ??|??|??+==??|??|     ??+==+  ??+==??++====??|"
-echo "    ???????++??????+    ??????++??|??|  ??|???????+???????+??|  ??|???????|"
-echo "    +======+ +=====+    +=====+ +=++=+  +=++======++======++=+  +=++======+"
+echo "  ██████╗  ██████╗ ███╗   ██╗███████╗██╗"
+echo "  ██╔══██╗██╔═══██╗████╗  ██║██╔════╝██║"
+echo "  ██║  ██║██║   ██║██╔██╗ ██║█████╗  ██║"
+echo "  ██║  ██║██║   ██║██║╚██╗██║██╔══╝  ╚═╝"
+echo "  ██████╔╝╚██████╔╝██║ ╚████║███████╗██╗"
+echo "  ╚═════╝  ╚═════╝ ╚═╝  ╚═══╝╚══════╝╚═╝"
 echo -e "\033[0m"
-sleep 0.5
+sleep 0.4
 
 echo -e "\033[1;36m"
-echo "              (?_?)"
-echo "              ( ?_?)>?*-*"
-echo "              (?*_*)"
+echo "              (•_•)"
+echo "              ( •_•)>⌐■-■"
+echo "              (⌐■_■)"
 echo ""
 echo "         INSTALLATION COMPLETE, BOSS."
 echo -e "\033[0m"
-sleep 0.8
+sleep 0.6
 
 echo -e "\033[1;33m"
-echo "  ?---------------------------------------------------------?"
-echo "  |                                                         |"
-echo "  |   ViciDial is UP. CSF is LOCKED. ECPhone is READY.     |"
-echo "  |   Your dialer just got a whole lot cooler. ?           |"
-echo "  |                                                         |"
-echo "  ?---------------------------------------------------------?"
+echo "  ┌─────────────────────────────────────────────────────────┐"
+echo "  │                                                         │"
+echo "  │   ViciDial is UP. CSF is LOCKED. ECPhone is READY.     │"
+echo "  │   Your dialer just got a whole lot cooler.  😎          │"
+echo "  │                                                         │"
+echo "  └─────────────────────────────────────────────────────────┘"
 echo -e "\033[0m"
-sleep 0.5
+sleep 0.4
 
 hr
 echo ""
@@ -1009,20 +1033,18 @@ echo -e "  ${BOLD}ECPhone:${NC}      https://${HOSTNAME}/ECPhone/ecphone.php"
 echo -e "  ${BOLD}Cockpit:${NC}      https://${HOSTNAME}:9090"
 echo ""
 echo -e "  ${BOLD}Default credentials:${NC}"
-echo -e "  ViciDial admin: ${YELLOW}admin / admin${NC} ? CHANGE THIS"
-echo -e "  MySQL cron:     ${YELLOW}cron / ${DB_PASS}${NC}"
+echo -e "  ViciDial admin : ${YELLOW}admin / admin${NC}  ← CHANGE THIS"
+echo -e "  MySQL cron     : ${YELLOW}cron / ${DB_PASS}${NC}"
 echo ""
 echo -e "  ${BOLD}Next steps:${NC}"
 echo -e "  1. Change ViciDial admin password"
-echo -e "  2. Set server IP in ViciDial: Admin -> Servers"
+echo -e "  2. Set server IP in ViciDial: Admin → Servers"
 echo -e "  3. Configure SIP trunk / carrier"
 echo -e "  4. Enable WebRTC phone template (rtcp_mux=yes)"
-echo -e "  5. Review CSF rules: /etc/csf/csf.conf"
+echo -e "  5. SSL: bash /usr/src/ecdialers-install/certbot.sh"
+echo -e "  6. Review CSF rules: /etc/csf/csf.conf"
 echo ""
 hr
-# -- VM Detection (dial-dropdown) --------------------------------------------
-hr; log "Installing VM detection (dial-dropdown)"
-curl -sL https://download.amdy.io/download/dial-dropdown.sh | bash ||     warn "dial-dropdown install failed -- instalar manualmente si se requiere"
-
 read -rp "Press Enter to reboot..."
+reboot
 reboot
