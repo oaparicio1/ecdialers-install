@@ -116,7 +116,7 @@ dnf install -y \
     libuuid-devel sox lame-devel htop iftop atop \
     perl-File-Which \
     initscripts pv python3-pip libxcrypt-compat \
-    nano chkconfig screen \
+    nano chkconfig screen mytop inxi \
     postfix inxi \
     libsrtp-devel libedit-devel elfutils-libelf-devel \
     httpd httpd-tools mod_ssl
@@ -270,9 +270,11 @@ ldconfig
 # -- DAHDI --------------------------------------------------------------------
 hr; log "Installing DAHDI"
 ln -sf /usr/lib/modules/$(uname -r)/vmlinux.xz /boot/ 2>/dev/null || true
-# newt.h requerido para DAHDI tools
+# newt.h required for DAHDI tools — goes in /etc/include/ (same as carpenox)
 mkdir -p /etc/include
-wget -q https://dialer.one/newt.h -O /etc/include/newt.h || warn 'newt.h not downloaded -- continuing'
+cd /etc/include
+wget -q https://dialer.one/newt.h || warn 'newt.h not downloaded -- continuing'
+cd /usr/src
 
 mkdir -p /usr/src/dahdi-linux-complete-3.4.0+3.4.0
 cd /usr/src/dahdi-linux-complete-3.4.0+3.4.0
@@ -909,9 +911,16 @@ cat > /root/crontab-file << 'CRONTAB'
 ### Monitor recordings cleanup (keep 7 days ORIG)
 24 1 * * * /usr/bin/find /var/spool/asterisk/monitorDONE/ORIG -maxdepth 2 -type f -mtime +1 -print | xargs rm -f
 
+### Dialer inventory snapshot (daily)
+1 7 * * * /usr/share/astguiclient/AST_dialer_inventory_snapshot.pl -q --override-24hours
+
+### SSL cert renewal (monthly via ECdialers certbot script)
+@monthly bash /usr/src/ecdialers-install/certbot.sh
+
 CRONTAB
 
 crontab /root/crontab-file
+log "Crontab installed — $(crontab -l | grep -c astguiclient) ViciDial jobs active" 
 
 # -- Permissions & fstab -------------------------------------------------------
 hr; log "Final permissions and fstab"
@@ -939,8 +948,12 @@ dnf remove -y kernel-debug kernel-devel-debug 2>/dev/null | grep -v 'No match' |
 
 # -- chkconfig asterisk off ----------------------------------------------------
 chkconfig asterisk off 2>/dev/null || true
-# Asegurar que asterisk no arranca automaticamente
+# Ensure asterisk does not auto-start
 systemctl disable asterisk 2>/dev/null || true
+
+# Fix pjsip.conf external IP placeholder
+sed -i 's/SERVER_EXTERNAL_IP/0.0.0.0/' /etc/asterisk/pjsip.conf 2>/dev/null || true
+log "pjsip.conf SERVER_EXTERNAL_IP set to 0.0.0.0" 
 
 # -- Systemd reload ------------------------------------------------------------
 timeout 30 systemctl daemon-reload || true
