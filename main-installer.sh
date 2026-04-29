@@ -25,18 +25,20 @@ hr()   { echo -e "${CYAN}==================================================${NC}
 
 # -- Banner -------------------------------------------------------------------
 clear
-hr
-echo -e "${BOLD}${CYAN}"
-echo "  ???????+ ??????+ ??????+ ??+ ?????+ ??+     ???????+??????+ ???????+"
-echo "  ??+====+??+====+ ??+==??+??|??+==??+??|     ??+====+??+==??+??+====+"
-echo "  ?????+  ??|      ??|  ??|??|???????|??|     ?????+  ??????++???????+"
-echo "  ??+==+  ??|      ??|  ??|??|??+==??|??|     ??+==+  ??+==??++====??|"
-echo "  ???????++??????+ ??????++??|??|  ??|???????+???????+??|  ??|???????|"
-echo "  +======+ +=====+ +=====+ +=++=+  +=++======++======++=+  +=++======+"
-echo -e "${NC}"
-echo -e "  ${BOLD}ViciDial Installer${NC} -- AlmaLinux 9 | Asterisk 18 | CSF"
-echo -e "  https://github.com/oaparicio1/ecdialers-install"
-hr
+echo -e "\033[0;36m"
+echo ""
+echo "  ______  ______ ______ _       _____  _      ______  ______ _____  "
+echo " |  ____|/ _____|  ____| |     |_   _|| |    |  ____|/ _____|  __ \ "
+echo " | |__  | |     | |  __| |       | |  | |    | |__  | |     | |__) |"
+echo " |  __| | |     | | |_ | |       | |  | |    |  __| | |     |  _  / "
+echo " | |____| |_____| |__| | |____  _| |_ | |____| |____| |_____| | \ \ "
+echo " |______|\\______|_______|______||_____||______|______|\\_______|_|  \_\\"
+echo ""
+echo -e "\033[0m"
+echo -e "  \033[1mViciDial Installer\033[0m  --  AlmaLinux 9  |  Asterisk 18  |  CSF"
+echo -e "  \033[2mhttps://github.com/oaparicio1/ecdialers-install\033[0m"
+echo -e "  \033[0;36m==================================================\033[0m"
+echo ""
 echo ""
 
 # -- Verify root --------------------------------------------------------------
@@ -122,7 +124,7 @@ dnf install -y \
     httpd httpd-tools mod_ssl
 
 # libss7 (puede no estar disponible en todos los repos -- no critico)
-dnf install -y libss7 libss7-devel 2>/dev/null || warn 'libss7 no disponible -- continuando'
+dnf install -y libss7 libss7-devel 2>/dev/null || warn 'libss7 not available -- continuing'
 
 # sngrep (SIP capture tool) -- repo de IRONTEC requerido en AlmaLinux 9
 dnf install -y bind-utils
@@ -222,7 +224,7 @@ mkdir -p /var/log/mysqld
 touch /var/log/mysqld/slow-queries.log
 chown -R mysql:mysql /var/log/mysqld
 
-systemctl enable --now mariadb || die 'MariaDB no pudo iniciar -- revisar logs: journalctl -u mariadb'
+systemctl enable --now mariadb || die 'MariaDB could not start -- check logs: journalctl -u mariadb'
 # httpd se habilita despues de instalarlo (ver bloque final)
 
 # -- Perl modules -------------------------------------------------------------
@@ -243,14 +245,14 @@ cd /usr/src
 wget -q http://download.vicidial.com/required-apps/asterisk-perl-0.08.tar.gz
 tar xzf asterisk-perl-0.08.tar.gz
 cd asterisk-perl-0.08
-perl Makefile.PL && make all && make install || warn 'asterisk-perl fallo -- algunos scripts pueden no funcionar'
+perl Makefile.PL && make all && make install || warn 'asterisk-perl failed -- some scripts may not work'
 
 # -- Lame ---------------------------------------------------------------------
 hr; log "Installing Lame"
 # Intentar desde RPM Fusion primero, si falla compilar desde fuente
 dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm 2>/dev/null || true
 dnf install -y lame lame-devel 2>/dev/null || {
-    warn "RPM Fusion lame no disponible -- compilando desde fuente"
+    warn "Lame RPM not available -- compiling from source"
     cd /usr/src
     wget -q http://downloads.sourceforge.net/project/lame/lame/3.99/lame-3.99.5.tar.gz
     tar -zxf lame-3.99.5.tar.gz
@@ -272,16 +274,16 @@ hr; log "Installing DAHDI"
 ln -sf /usr/lib/modules/$(uname -r)/vmlinux.xz /boot/ 2>/dev/null || true
 # newt.h requerido para DAHDI tools
 mkdir -p /etc/include
-wget -q https://dialer.one/newt.h -O /etc/include/newt.h || warn 'newt.h no descargado -- continuando'
+wget -q https://dialer.one/newt.h -O /etc/include/newt.h || warn 'newt.h not downloaded -- continuing'
 
 mkdir -p /usr/src/dahdi-linux-complete-3.4.0+3.4.0
 cd /usr/src/dahdi-linux-complete-3.4.0+3.4.0
 wget -q https://raw.githubusercontent.com/oaparicio1/ecdialers-install/main/assets/dahdi-9.5-fix.zip
 unzip -q dahdi-9.5-fix.zip
 dnf install -y newt newt-devel
-make clean && make && make install && make install-config || warn 'DAHDI linux build fallo -- no critico para WebRTC'
+make clean && make && make install && make install-config || warn 'DAHDI linux build failed -- not critical for WebRTC'
 dnf install -y dahdi-tools-libs 2>/dev/null || true
-cd tools 2>/dev/null && make clean && make && make install && make install-config || warn 'DAHDI tools build fallo -- continuando'
+cd tools 2>/dev/null && make clean && make && make install && make install-config || warn 'DAHDI tools build failed -- continuing'
 cp /etc/dahdi/system.conf.sample /etc/dahdi/system.conf
 modprobe dahdi 2>/dev/null || true
 modprobe dahdi_dummy 2>/dev/null || true
@@ -298,7 +300,7 @@ wget -q https://github.com/cisco/libsrtp/archive/v2.1.0.tar.gz -O libsrtp-2.1.0.
 tar xf libsrtp-2.1.0.tar.gz
 cd libsrtp-2.1.0
 ./configure --prefix=/usr --enable-openssl
-make shared_library && make install || warn 'libsrtp system install fallo -- usando bundled de Asterisk'
+make shared_library && make install || warn 'libsrtp system install failed -- using Asterisk bundled'
 ldconfig
 
 # -- Asterisk 18 --------------------------------------------------------------
@@ -328,10 +330,10 @@ mkdir -p /var/lib/asterisk/phoneprov
 mkdir -p /var/lib/asterisk/sounds
 mkdir -p /var/spool/asterisk/voicemail/default/1234/INBOX
 
-make samples || warn 'make samples tuvo errores menores -- continuando'
+make samples || warn 'make samples had minor errors -- continuing'
 sed -i 's|noload = chan_sip.so|;noload = chan_sip.so|g' /etc/asterisk/modules.conf
 
-make -j "${JOBS}" all && make install || die 'Asterisk build fallo -- revisar errores arriba'
+make -j "${JOBS}" all && make install || die 'Asterisk build failed -- check errors above'
 
 # Fix modules
 cat >> /etc/asterisk/modules.conf << 'EOF'
@@ -355,18 +357,53 @@ eventfilter=Event: Confbridge
 EOF
 
 # Verificar que Asterisk quedo instalado
-[ -f /usr/sbin/asterisk ] || die 'Asterisk no se instalo -- revisar errores de compilacion'
+[ -f /usr/sbin/asterisk ] || die 'Asterisk not installed -- check compilation errors'
 log "Asterisk $(/usr/sbin/asterisk -V 2>/dev/null) instalado OK"
 read -rp "Asterisk done. Press Enter to continue with ViciDial..."
 
 # -- ViciDial (astguiclient) ---------------------------------------------------
 hr; log "Installing ViciDial (astguiclient trunk)"
 mkdir -p /usr/src/astguiclient && cd /usr/src/astguiclient
-svn checkout svn://svn.eflo.net/agc_2-X/trunk || die 'SVN checkout fallo -- verificar conectividad'
+svn checkout svn://svn.eflo.net/agc_2-X/trunk || die 'SVN checkout failed -- check connectivity'
 
 # -- MySQL databases ----------------------------------------------------------
 hr; log "Creating MySQL databases and users"
-# --force ignora duplicate key errors de first_server_install.sql (no criticos)
+
+# Verificar si la DB asterisk ya existe con datos
+DB_EXISTS=$(mysql -u root -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='asterisk';" 2>/dev/null | tail -1)
+DB_EXISTS=${DB_EXISTS:-0}
+
+if [ "$DB_EXISTS" -gt "10" ]; then
+    warn ""
+    warn "Database asterisk already exists with ${DB_EXISTS} tables."
+    warn ""
+    echo -e "  Options:"
+    echo -e "  ${BOLD}[1]${NC} DROP and recreate from scratch (clean install -- DELETES ALL DATA)"
+    echo -e "  ${BOLD}[2]${NC} Keep existing data (only add missing tables/users)"
+    echo -e "  ${BOLD}[3]${NC} Cancel installation"
+    echo ""
+    read -rp "  Select [1/2/3]: " DB_CHOICE
+    case "$DB_CHOICE" in
+        1)
+            warn "Dropping asterisk database..."
+            mysql -u root -e "DROP DATABASE IF EXISTS asterisk;" || die "Could not drop database"
+            log "Database dropped -- will be recreated from scratch"
+            ;;
+        2)
+            log "Keeping existing data -- adding missing tables/users only"
+            ;;
+        3)
+            die "Installation cancelled by user"
+            ;;
+        *)
+            warn "Invalid option -- keeping existing data"
+            ;;
+    esac
+else
+    log "Database does not exist or is empty -- clean install"
+fi
+
+# Create DB, users and load schema
 mysql -u root --force << MYSQLEOF
 CREATE DATABASE IF NOT EXISTS asterisk DEFAULT CHARACTER SET utf8 COLLATE utf8_unicode_ci;
 CREATE USER IF NOT EXISTS 'cron'@'localhost' IDENTIFIED BY '${DB_PASS}';
@@ -387,7 +424,7 @@ USE asterisk;
 UPDATE servers SET asterisk_version='18.21.1-vici';
 QUIT
 MYSQLEOF
-[ $? -ne 0 ] && die 'Error critico en MySQL -- revisar MariaDB'
+[ $? -ne 0 ] && die 'Critical MySQL error -- check MariaDB'
 
 # -- astguiclient.conf ---------------------------------------------------------
 hr; log "Writing astguiclient.conf"
@@ -435,7 +472,7 @@ cd /usr/src/astguiclient/trunk
 perl install.pl --no-prompt --copy_sample_conf_files=Y || warn 'install.pl fase 1 tuvo advertencias -- verificar'
 perl install.pl --no-prompt || warn 'install.pl fase 2 tuvo advertencias -- verificar'
 # Verificar que ViciDial quedo instalado correctamente
-[ -f /usr/share/astguiclient/ADMIN_keepalive_ALL.pl ] || die 'ViciDial no se instalo correctamente -- revisar output de install.pl'
+[ -f /usr/share/astguiclient/ADMIN_keepalive_ALL.pl ] || die 'ViciDial not installed correctly -- check install.pl output'
 log "ViciDial instalado correctamente OK"
 
 # Update server IP
@@ -508,7 +545,7 @@ hr; log "Building ip_relay"
 cd /usr/src/astguiclient/trunk/extras/ip_relay/
 unzip -q ip_relay_1.1.112705.zip 2>/dev/null || true
 cd ip_relay_1.1/src/unix/ 2>/dev/null || true
-make 2>/dev/null && cp ip_relay ip_relay2 &&     mv -f ip_relay /usr/bin/ && mv -f ip_relay2 /usr/local/bin/ip_relay &&     log "ip_relay instalado OK" || warn "ip_relay build fallo -- monitoreo ciego no disponible (no critico)"
+make 2>/dev/null && cp ip_relay ip_relay2 &&     mv -f ip_relay /usr/bin/ && mv -f ip_relay2 /usr/local/bin/ip_relay &&     log "ip_relay instalado OK" || warn "ip_relay build failed -- blind monitor unavailable (non-critical)"
 
 # -- G.729 codec ---------------------------------------------------------------
 # G.729 requiere licencia comercial. Instalar manualmente si se requiere:
@@ -554,15 +591,29 @@ mysql -u root -e "USE asterisk; UPDATE system_settings SET webphone_url='https:/
 log "ECPhone configured in system_settings OK"
 
 # -- SSL (certbot) -------------------------------------------------------------
-hr; log "Setting up SSL with certbot"
+# Mismo patron que carpenox: instalar + habilitar timer, NO correr certbot ahora
+# El dominio puede no resolver al servidor nuevo todavia
+# Correr manualmente despues: bash /usr/src/ecdialers-install/certbot.sh
+hr; log "Installing certbot (SSL configured post-install)"
 dnf install -y certbot python3-certbot-apache
-systemctl enable --now certbot-renew.timer
+systemctl enable certbot-renew.timer
+systemctl start certbot-renew.timer 2>/dev/null || true
+chmod +x "${INSTALLER_DIR}/certbot.sh" 2>/dev/null || true
 
-# Temporarily open 80/443 for certbot validation
-systemctl stop csf 2>/dev/null || true
-certbot --apache -d "${HOSTNAME}" --non-interactive --agree-tos \
-    -m "admin@ecdialers.com" --redirect && log "SSL configurado OK" || \
-    warn "Certbot fallo -- correr manualmente despues: certbot --apache -d ${HOSTNAME}"
+# Try to get cert if domain already resolves to this server
+# If it fails, continue without SSL (can run certbot.sh later)
+if host "${HOSTNAME}" 2>/dev/null | grep -q "${SERVER_IP}"; then
+    log "Dominio ${HOSTNAME} resuelve a ${SERVER_IP} -- obteniendo certificado SSL"
+    systemctl stop csf 2>/dev/null || true
+    certbot --apache -d "${HOSTNAME}" --non-interactive --agree-tos \
+        -m "admin@ecdialers.com" --redirect && \
+        log "SSL configured OK" || \
+        warn "Certbot failed -- run manually: bash ${INSTALLER_DIR}/certbot.sh"
+    csf -e 2>/dev/null || true
+else
+    warn "Domain ${HOSTNAME} does not resolve to ${SERVER_IP} yet"
+    warn "Configure SSL manually after DNS is set: bash ${INSTALLER_DIR}/certbot.sh"
+fi
 
 # -- WebRTC --------------------------------------------------------------------
 hr; log "Enabling WebRTC in ViciDial"
@@ -587,37 +638,46 @@ sed -i 's/root/#root/g' /etc/cockpit/disallowed-users 2>/dev/null || true
 systemctl enable --now cockpit.socket
 
 # Copy Let's Encrypt cert to Cockpit
+# Copy certs to Cockpit if they exist (may not exist if certbot did not run)
 CERT_PATH="/etc/letsencrypt/live/${HOSTNAME}"
 if [ -d "$CERT_PATH" ]; then
     cp "${CERT_PATH}/fullchain.pem" /etc/cockpit/ws-certs.d/ecdialers.cert
     cp "${CERT_PATH}/privkey.pem"   /etc/cockpit/ws-certs.d/ecdialers.key
-    systemctl restart cockpit.socket
+    systemctl restart cockpit.socket && log "Cockpit SSL configured OK"
+else
+    warn "SSL certs not found -- Cockpit will use self-signed cert until SSL is configured"
 fi
 
-# -- CSF Firewall -------------------------------------------------------------
+# -- CSF Firewall (Sentinel) --------------------------------------------------
 hr; log "Installing and configuring CSF Firewall"
-mkdir -p /usr/src/csf-install && cd /usr/src/csf-install
 
-# Descargar CSF desde Sentinel (con verbose para detectar errores)
-wget --no-verbose --timeout=60 \
-    https://github.com/sentinelfirewall/sentinel/raw/refs/heads/main/csf.tgz \
-    -O csf.tgz 2>&1 || die "CSF download fallo"
+# Prerequisites for CSF
+dnf install -y wget tar perl 2>/dev/null || true
 
-# Verificar que el archivo descargo correctamente
-[ -f csf.tgz ] || die "csf.tgz no existe despues de wget"
-[ -s csf.tgz ] || die "csf.tgz esta vacio -- descarga incompleta"
-file csf.tgz | grep -qi "gzip\|tar" || die "csf.tgz no es un archivo tar valido -- posible error de descarga"
+# Descargar desde Sentinel — siguiendo pasos oficiales
+cd /root
+rm -f csf.tgz
+wget --timeout=60 -L \
+    https://raw.githubusercontent.com/sentinelfirewall/sentinel/refs/heads/main/csf.tgz \
+    || die "CSF download failed"
 
-log "CSF descargado: $(du -sh csf.tgz | cut -f1)"
-tar -xzf csf.tgz || die "CSF tar extract fallo"
+# Verify download
+[ -f /root/csf.tgz ] || die "csf.tgz not found after download"
+[ -s /root/csf.tgz ] || die "csf.tgz is empty -- incomplete download"
+log "CSF descargado: $(du -sh /root/csf.tgz | cut -f1)"
 
-# Buscar el directorio extraido
-CSF_DIR=$(tar -tzf csf.tgz 2>/dev/null | head -1 | cut -d'/' -f1)
-CSF_DIR="${CSF_DIR:-csf}"
-cd "/usr/src/csf-install/${CSF_DIR}" || die "Directorio CSF '${CSF_DIR}' no encontrado"
+# Extract
+tar -xzf /root/csf.tgz -C /root/ || die "CSF extract failed"
+[ -d /root/csf ] || die "Directory /root/csf not found after extract"
 
-sh install.sh || die "CSF install.sh fallo"
-log "CSF instalado OK"
+# Install
+cd /root/csf
+sh install.sh || die "CSF install.sh failed"
+log "CSF installed OK"
+
+# Cleanup
+cd /root
+rm -rf /root/csf /root/csf.tgz
 
 # ECdialers CSF configuration
 cat > /etc/csf/csf.conf << 'CSFCONF'
@@ -709,10 +769,10 @@ MESSENGER_SSL_PORT = "443"
 CSFCONF
 
 # Allow server's own IP in CSF
-csf -a "${SERVER_IP}" "ECdialers Server IP" 2>/dev/null || warn "CSF allow IP fallo -- agregar manualmente: csf -a ${SERVER_IP}"
+csf -a "${SERVER_IP}" "ECdialers Server IP" 2>/dev/null || warn "CSF allow IP failed -- add manually: csf -a ${SERVER_IP}"
 
 csf -r 2>/dev/null || true
-systemctl enable csf lfd 2>/dev/null || warn "CSF service enable fallo -- puede requerir reboot"
+systemctl enable csf lfd 2>/dev/null || warn "CSF service enable failed -- may require reboot"
 log "CSF Firewall configured OK"
 
 # -- SSH hardening -------------------------------------------------------------
@@ -876,7 +936,7 @@ Redirecting to ViciDial...
 EOF
 
 # -- Disable debug kernel ------------------------------------------------------
-# Remover kernel-debug si existe (no critico si no esta instalado)
+# Remove kernel-debug if installed (non-critical)
 dnf remove -y kernel-debug kernel-devel-debug 2>/dev/null | grep -v 'No match' || true
 
 # -- chkconfig asterisk off ----------------------------------------------------
@@ -888,14 +948,14 @@ systemctl disable asterisk 2>/dev/null || true
 timeout 30 systemctl daemon-reload || true
 systemctl enable rc-local.service
 # NO iniciar rc-local durante instalacion -- intenta arrancar Asterisk y se cuelga
-# rc-local arrancara automaticamente en el proximo reboot
-log "rc-local habilitado para boot (no se inicia durante instalacion) OK"
+# rc-local will start automatically on next reboot
+log "rc-local enabled for boot (not started during install)"
 systemctl enable httpd mariadb
-systemctl restart mariadb 2>/dev/null || warn "MariaDB restart fallo"
-systemctl restart httpd 2>/dev/null || warn "httpd restart fallo -- revisar config"
+systemctl restart mariadb 2>/dev/null || warn "MariaDB restart failed"
+systemctl restart httpd 2>/dev/null || warn "httpd restart failed -- check config"
 # Verificar que httpd esta corriendo
-systemctl is-active httpd >/dev/null 2>&1 && log "httpd corriendo OK" || warn "httpd no esta activo -- revisar: journalctl -u httpd"
-systemctl is-active mariadb >/dev/null 2>&1 && log "MariaDB corriendo OK" || warn "MariaDB no esta activo" 
+systemctl is-active httpd >/dev/null 2>&1 && log "httpd corriendo OK" || warn "httpd not active -- check: journalctl -u httpd"
+systemctl is-active mariadb >/dev/null 2>&1 && log "MariaDB corriendo OK" || warn "MariaDB not active" 
 
 # -- SSH banner ----------------------------------------------------------------
 sed -i 's|#Banner none|Banner /etc/ssh/sshd_banner|g' /etc/ssh/sshd_config
