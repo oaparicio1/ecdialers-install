@@ -1,12 +1,12 @@
 #!/bin/bash
 # ============================================================================
 # ECdialers — Enable WebRTC on ViciDial
-# Configures PJSIP + WebSocket + SIP template + phones for ECPhone
-# Safe to run on existing installs and when changing domains.
+# Fully unattended — only asks for domain and email if not provided
 #
 # Usage:
-#   bash vicidial-enable-webrtc.sh                     # auto-detect domain
-#   bash vicidial-enable-webrtc.sh demo.ecdialers.com  # specify domain
+#   bash vicidial-enable-webrtc.sh                                # interactive
+#   bash vicidial-enable-webrtc.sh demo.ecdialers.com             # semi-auto
+#   bash vicidial-enable-webrtc.sh demo.ecdialers.com admin@x.com # full auto
 # ============================================================================
 
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'; BOLD='\033[1m'
@@ -17,40 +17,103 @@ hr()   { echo -e "${GREEN}──────────────────
 
 [[ $EUID -ne 0 ]] && die "Must run as root"
 
-# ── Domain / IP resolution ────────────────────────────────────────────────────
-DOMAIN="${1:-$(hostname -f)}"
+clear
+hr
+echo -e "  ${BOLD}ECdialers — WebRTC + SSL Setup${NC}"
+hr
+echo ""
+
+# ── Gather domain and email ───────────────────────────────────────────────────
+DOMAIN="${1:-}"
+EMAIL="${2:-}"
+
+if [ -z "$DOMAIN" ]; then
+    # Show current domain from system_settings if exists
+    CURRENT_DOMAIN=$(mysql -u root asterisk -N -e         "SELECT webphone_url FROM system_settings LIMIT 1;" 2>/dev/null |         grep -oP 'https://\K[^/]+' | head -1)
+
+    if [ -n "$CURRENT_DOMAIN" ]; then
+        echo -e "  Current domain: ${YELLOW}${CURRENT_DOMAIN}${NC}"
+        echo ""
+        echo -e "  ${BOLD}Options:${NC}"
+        echo -e "  [1] Keep current domain (${CURRENT_DOMAIN})"
+        echo -e "  [2] Change to a new domain"
+        echo ""
+        read -rp "  Select [1/2]: " DOMAIN_CHOICE
+        case "$DOMAIN_CHOICE" in
+            2)
+                read -rp "  New domain name: " DOMAIN
+                ;;
+            *)
+                DOMAIN="$CURRENT_DOMAIN"
+                log "Keeping current domain: ${DOMAIN}"
+                ;;
+        esac
+    else
+        read -rp "  Domain name (e.g. demo.ecdialers.com): " DOMAIN
+    fi
+fi
+[ -z "$DOMAIN" ] && die "Domain is required"
+
+if [ -z "$EMAIL" ]; then
+    read -rp "  Admin email for SSL cert [admin@ecdialers.com]: " EMAIL
+    EMAIL="${EMAIL:-admin@ecdialers.com}"
+fi
+
 SERVER_IP=$(hostname -I | awk '{print $1}')
 CERT_PATH="/etc/letsencrypt/live/${DOMAIN}"
 
-# Fallback: search for any existing cert
-if [ ! -d "$CERT_PATH" ]; then
-    FOUND_CERT=$(ls /etc/letsencrypt/live/ 2>/dev/null | grep -v README | head -1)
-    if [ -n "$FOUND_CERT" ]; then
-        warn "Cert for ${DOMAIN} not found — using ${FOUND_CERT}"
-        CERT_PATH="/etc/letsencrypt/live/${FOUND_CERT}"
-        DOMAIN="${FOUND_CERT}"
-    else
-        warn "No SSL cert found in /etc/letsencrypt/live/"
-        warn "WebRTC TLS will not work until SSL is configured"
-        warn "Run: bash /usr/src/ecdialers-install/certbot.sh"
-        CERT_PATH="/etc/letsencrypt/live/${DOMAIN}"
+log "Domain:    ${DOMAIN}"
+log "Email:     ${EMAIL}"
+log "Server IP: ${SERVER_IP}"
+echo ""
+
+# ── Step 1: SSL Certificate ───────────────────────────────────────────────────
+hr; log "Step 1/5 — SSL Certificate"
+
+if [ -f "${CERT_PATH}/fullchain.pem" ]; then
+    log "SSL cert already exists — skipping certbot"
+else
+    log "Obtaining SSL certificate for ${DOMAIN}..."
+
+    # Ensure basic HTTP vhost exists for certbot validation
+    if ! grep -rq "ServerName ${DOMAIN}" /etc/httpd/conf.d/ 2>/dev/null; then
+        cat > /etc/httpd/conf.d/${DOMAIN}.conf << EOF
+<VirtualHost *:80>
+    ServerName ${DOMAIN}
+    DocumentRoot /var/www/html
+</VirtualHost>
+EOF
+        systemctl restart httpd 2>/dev/null || true
     fi
+
+    # Remove any broken SSL vhost before certbot runs
+    rm -f /etc/httpd/conf.d/ecdialers-ssl.conf
+    systemctl restart httpd 2>/dev/null || true
+
+    # Stop CSF temporarily
+    csf -x 2>/dev/null || true
+
+    certbot --apache -d "${DOMAIN}" --non-interactive --agree-tos \
+        -m "${EMAIL}" --redirect && \
+        log "SSL certificate obtained OK" || \
+        die "Certbot failed — check DNS: host ${DOMAIN}"
+
+    # Re-enable CSF
+    csf -e 2>/dev/null || true
 fi
 
-log "Domain:    ${DOMAIN}"
-log "Server IP: ${SERVER_IP}"
-log "Cert path: ${CERT_PATH}"
-hr
+# Verify cert exists
+[ -f "${CERT_PATH}/fullchain.pem" ] || die "SSL cert not found at ${CERT_PATH} — certbot may have failed"
 
-# ── Backup ────────────────────────────────────────────────────────────────────
+# ── Step 2: Asterisk config files ─────────────────────────────────────────────
+hr; log "Step 2/5 — Asterisk config files"
+
 TS=$(date +%Y%m%d_%H%M%S)
 for f in /etc/asterisk/pjsip.conf /etc/asterisk/http.conf /etc/asterisk/rtp.conf; do
     [ -f "$f" ] && cp -p "$f" "${f}.bak.${TS}"
 done
-log "Backups created (*.bak.${TS})"
 
-# ── http.conf ─────────────────────────────────────────────────────────────────
-log "Configuring http.conf"
+# http.conf
 cat > /etc/asterisk/http.conf << EOF
 [general]
 enabled=yes
@@ -62,10 +125,9 @@ tlscertfile=${CERT_PATH}/fullchain.pem
 tlsprivatekey=${CERT_PATH}/privkey.pem
 sessionlimit=1000
 EOF
-log "http.conf written with cert: ${CERT_PATH}"
+log "http.conf OK"
 
-# ── rtp.conf ──────────────────────────────────────────────────────────────────
-log "Configuring rtp.conf"
+# rtp.conf
 cat > /etc/asterisk/rtp.conf << EOF
 [general]
 rtpstart=10000
@@ -75,15 +137,13 @@ dtmftimeout=3000
 strictrtp=no
 icehost=${SERVER_IP}
 EOF
-log "rtp.conf written with icehost=${SERVER_IP}"
+log "rtp.conf OK"
 
-# ── pjsip.conf — WebRTC transports ───────────────────────────────────────────
-log "Configuring pjsip.conf WebRTC transports"
-
+# pjsip transports
 if ! grep -q "transport-wss" /etc/asterisk/pjsip.conf 2>/dev/null; then
     cat >> /etc/asterisk/pjsip.conf << EOF
 
-; ── ECPhone WebRTC transports ─────────────────────────────────────────────────
+; ── ECPhone WebRTC transports ──────────────────────────────────────────────────
 [transport-wss]
 type=transport
 protocol=wss
@@ -105,22 +165,24 @@ local_net=${SERVER_IP}/255.255.255.0
 external_media_address=${SERVER_IP}
 external_signaling_address=${SERVER_IP}
 EOF
-    log "WebRTC transports added to pjsip.conf"
+    log "pjsip WebRTC transports added"
 else
-    warn "transport-wss already exists — updating external addresses"
     sed -i "s/external_media_address=.*/external_media_address=${SERVER_IP}/" /etc/asterisk/pjsip.conf
     sed -i "s/external_signaling_address=.*/external_signaling_address=${SERVER_IP}/" /etc/asterisk/pjsip.conf
+    log "pjsip transports updated"
 fi
 
-# ── modules.conf ──────────────────────────────────────────────────────────────
-log "Ensuring WebSocket modules are loaded"
+# modules.conf
 sed -i '/noload.*res_http_websocket/d' /etc/asterisk/modules.conf
 grep -q "load => res_http_websocket.so" /etc/asterisk/modules.conf || \
     echo "load => res_http_websocket.so" >> /etc/asterisk/modules.conf
+log "modules.conf OK"
 
-# ── vicidial_conf_templates — SIP_generic WebRTC ─────────────────────────────
-log "Updating SIP_generic phone template for WebRTC"
-mysql -u root asterisk << EOF
+# ── Step 3: ViciDial DB updates ───────────────────────────────────────────────
+hr; log "Step 3/5 — ViciDial database"
+
+# SIP_generic template
+mysql -u root asterisk -e "
 UPDATE vicidial_conf_templates
 SET template_contents='type=friend
 host=dynamic
@@ -143,37 +205,57 @@ dtlsverify=no
 dtlscertfile=${CERT_PATH}/cert.pem
 dtlsprivatekey=${CERT_PATH}/privkey.pem
 dtlssetup=actpass'
-WHERE template_id='SIP_generic';
-EOF
-log "SIP_generic template updated with WebRTC params + DTLS cert paths"
+WHERE template_id='SIP_generic';" 2>/dev/null && \
+    log "SIP_generic template updated" || \
+    warn "SIP_generic update failed — template may not exist yet"
 
-# ── phones — set WebRTC defaults ──────────────────────────────────────────────
-log "Setting phones to WebRTC mode"
-mysql -u root asterisk << 'EOF'
+# phones
+mysql -u root asterisk -e "
 ALTER TABLE phones MODIFY COLUMN is_webphone ENUM('Y','N','Y_API_LAUNCH') DEFAULT 'Y';
-UPDATE phones SET template_id='SIP_generic', is_webphone='Y'
-WHERE template_id NOT IN ('custom') OR template_id IS NULL;
-EOF
-log "All phones updated to SIP_generic WebRTC template"
+UPDATE phones SET template_id='SIP_generic', is_webphone='Y';" 2>/dev/null && \
+    log "Phones updated to WebRTC mode" || \
+    warn "Phones update failed"
 
-# ── system_settings — ALL webphone fields ─────────────────────────────────────
-log "Updating system_settings webphone fields"
-mysql -u root asterisk << EOF
-UPDATE system_settings SET
-    webphone_url='https://${DOMAIN}/ECPhone/ecphone.php',
-    webphone_dialpad='Y',
-    webphone_systemkey='webrtc',
-    webphone_width='260',
-    webphone_height='440',
-    agent_screen_webphone='Y',
-    agent_screen_webphone_layout='css/ecdialers.css',
-    active_voicemail_server='${SERVER_IP}',
-    sounds_web_server='https://${DOMAIN}';
-EOF
-log "system_settings updated for domain: ${DOMAIN}"
+# system_settings — only update columns that exist
+log "Updating system_settings..."
+EXISTING_COLS=$(mysql -u root asterisk -N -e \
+    "SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA='asterisk' AND TABLE_NAME='system_settings';" 2>/dev/null)
 
-# ── Apache SSL vhost ──────────────────────────────────────────────────────────
-log "Configuring Apache SSL vhost"
+build_update() {
+    local sets=""
+    local col val
+    while IFS='=' read -r col val; do
+        if echo "$EXISTING_COLS" | grep -qw "$col"; then
+            sets="${sets}${col}='${val}',"
+        else
+            warn "Column '${col}' not found in system_settings — skipping"
+        fi
+    done
+    echo "${sets%,}"
+}
+
+UPDATES=$(build_update << EOF
+webphone_url=https://${DOMAIN}/ECPhone/ecphone.php
+webphone_systemkey=webrtc
+webphone_width=260
+webphone_height=440
+agent_screen_webphone=Y
+agent_screen_webphone_layout=css/ecdialers.css
+active_voicemail_server=${SERVER_IP}
+sounds_web_server=https://${DOMAIN}
+EOF
+)
+
+if [ -n "$UPDATES" ]; then
+    mysql -u root asterisk -e "UPDATE system_settings SET ${UPDATES};" 2>/dev/null && \
+        log "system_settings updated" || \
+        warn "system_settings update had errors"
+fi
+
+# ── Step 4: Apache SSL vhost ──────────────────────────────────────────────────
+hr; log "Step 4/5 — Apache SSL vhost"
+
 cat > /etc/httpd/conf.d/ecdialers-ssl.conf << EOF
 <VirtualHost *:443>
     ServerName ${DOMAIN}
@@ -188,66 +270,55 @@ cat > /etc/httpd/conf.d/ecdialers-ssl.conf << EOF
         Require all granted
     </Directory>
 
-    # WebRTC WebSocket proxy
-    ProxyPass /ws ws://127.0.0.1:8088/ws
-    ProxyPassReverse /ws ws://127.0.0.1:8088/ws
-
     ErrorLog /var/log/httpd/ssl_error.log
     CustomLog /var/log/httpd/ssl_access.log combined
 </VirtualHost>
-
-<VirtualHost *:80>
-    ServerName ${DOMAIN}
-    RewriteEngine On
-    RewriteRule ^(.*)$ https://%{HTTP_HOST}$1 [R=301,L]
-</VirtualHost>
 EOF
-log "Apache SSL vhost written: /etc/httpd/conf.d/ecdialers-ssl.conf"
 
-# ── Reload services ───────────────────────────────────────────────────────────
-log "Reloading services"
-systemctl reload httpd 2>/dev/null && log "Apache reloaded OK" || warn "Apache reload failed"
+# Update certbot-generated conf if exists
+CERTBOT_CONF="/etc/httpd/conf.d/${DOMAIN}-le-ssl.conf"
+[ -f "$CERTBOT_CONF" ] && log "Certbot SSL conf already exists: ${CERTBOT_CONF}"
 
-asterisk -rx "module reload res_http_websocket.so"              2>/dev/null || true
-asterisk -rx "module reload res_pjsip.so"                       2>/dev/null || true
-asterisk -rx "module reload res_pjsip_transport_websocket.so"   2>/dev/null || true
-asterisk -rx "http reload"                                      2>/dev/null || true
-log "Asterisk modules reloaded"
+# Copy cert to Cockpit if available
+if [ -d /etc/cockpit/ws-certs.d ]; then
+    cp "${CERT_PATH}/fullchain.pem" /etc/cockpit/ws-certs.d/ecdialers.cert 2>/dev/null || true
+    cp "${CERT_PATH}/privkey.pem"   /etc/cockpit/ws-certs.d/ecdialers.key  2>/dev/null || true
+    systemctl restart cockpit.socket 2>/dev/null || true
+    log "Cockpit SSL updated"
+fi
 
-# ── CSF — open WebSocket ports ────────────────────────────────────────────────
+systemctl restart httpd && log "Apache restarted OK" || warn "Apache restart failed — check config"
+
+# ── Step 5: Reload Asterisk + CSF ─────────────────────────────────────────────
+hr; log "Step 5/5 — Reload Asterisk + CSF"
+
+asterisk -rx "module load res_http_websocket.so"              2>/dev/null || true
+asterisk -rx "module load res_pjsip_transport_websocket.so"   2>/dev/null || true
+asterisk -rx "module reload res_pjsip.so"                     2>/dev/null || true
+log "Asterisk modules loaded"
+
 if command -v csf >/dev/null 2>&1; then
-    log "Opening WebRTC ports in CSF"
     for port in 8088 8089; do
-        if ! grep -q "$port" /etc/csf/csf.conf; then
+        grep -q "$port" /etc/csf/csf.conf || \
             sed -i "s/TCP_IN = \"\(.*\)\"/TCP_IN = \"\1,${port}\"/" /etc/csf/csf.conf
-            log "Port ${port} added to CSF TCP_IN"
-        else
-            warn "Port ${port} already in CSF"
-        fi
     done
-    csf -r >/dev/null 2>&1 && log "CSF restarted" || warn "CSF restart failed"
+    csf -r >/dev/null 2>&1 && log "CSF restarted with WebRTC ports" || warn "CSF restart failed"
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
 hr
-echo -e "  ${BOLD}WebRTC Configuration Complete!${NC}"
+echo -e "  ${BOLD}WebRTC Setup Complete!${NC}"
 hr
 echo ""
-echo -e "  Domain:        ${DOMAIN}"
-echo -e "  ECPhone URL:   https://${DOMAIN}/ECPhone/ecphone.php"
-echo -e "  WebSocket:     wss://${DOMAIN}:8089/ws"
-echo -e "  Server IP:     ${SERVER_IP}"
+echo -e "  Domain:      ${DOMAIN}"
+echo -e "  ECPhone:     https://${DOMAIN}/ECPhone/ecphone.php"
+echo -e "  WebSocket:   wss://${DOMAIN}:8089/ws"
+echo -e "  Server IP:   ${SERVER_IP}"
+echo -e "  SSL Cert:    expires $(openssl x509 -enddate -noout -in ${CERT_PATH}/fullchain.pem | cut -d= -f2)"
 echo ""
-echo -e "  ${BOLD}ViciDial Phone Template (SIP_generic):${NC}"
-echo -e "  transport=ws,wss,udp  |  dtls=yes  |  avpf=yes  |  icesupport=yes"
-echo ""
-echo -e "  ${BOLD}Next steps in ViciDial Admin:${NC}"
-echo -e "  1. Admin → Phones → verify template_id = SIP_generic"
+echo -e "  ${BOLD}Next steps:${NC}"
+echo -e "  1. Admin → Phones → verify template = SIP_generic"
 echo -e "  2. Admin → System Settings → verify webphone_url"
-echo -e "  3. Test: login agent → phone should auto-register via WebRTC"
+echo -e "  3. Login as agent → ECPhone should auto-register"
 echo ""
-if [ ! -f "${CERT_PATH}/fullchain.pem" ]; then
-    warn "SSL cert not found at ${CERT_PATH}"
-    warn "Run: bash /usr/src/ecdialers-install/certbot.sh"
-fi
