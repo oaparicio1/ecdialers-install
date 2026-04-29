@@ -11,44 +11,44 @@
 #   chmod +x main-installer.sh
 #   ./main-installer.sh
 # ============================================================================
-# set -euo pipefail — desactivado para permitir continuar ante errores no críticos
+# set -euo pipefail -- desactivado para permitir continuar ante errores no criticos
 set -uo pipefail 2>/dev/null || true
 
-# ── Colors ───────────────────────────────────────────────────────────────────
+# -- Colors -------------------------------------------------------------------
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 
 log()  { echo -e "${GREEN}[EC]${NC} $*"; }
 warn() { echo -e "${YELLOW}[!!]${NC} $*"; }
 die()  { echo -e "${RED}[ERR]${NC} $*" >&2; exit 1; }
-hr()   { echo -e "${CYAN}══════════════════════════════════════════════════${NC}"; }
+hr()   { echo -e "${CYAN}==================================================${NC}"; }
 
-# ── Banner ───────────────────────────────────────────────────────────────────
+# -- Banner -------------------------------------------------------------------
 clear
 hr
 echo -e "${BOLD}${CYAN}"
-echo "  ███████╗ ██████╗ ██████╗ ██╗ █████╗ ██╗     ███████╗██████╗ ███████╗"
-echo "  ██╔════╝██╔════╝ ██╔══██╗██║██╔══██╗██║     ██╔════╝██╔══██╗██╔════╝"
-echo "  █████╗  ██║      ██║  ██║██║███████║██║     █████╗  ██████╔╝███████╗"
-echo "  ██╔══╝  ██║      ██║  ██║██║██╔══██║██║     ██╔══╝  ██╔══██╗╚════██║"
-echo "  ███████╗╚██████╗ ██████╔╝██║██║  ██║███████╗███████╗██║  ██║███████║"
-echo "  ╚══════╝ ╚═════╝ ╚═════╝ ╚═╝╚═╝  ╚═╝╚══════╝╚══════╝╚═╝  ╚═╝╚══════╝"
+echo "  ???????+ ??????+ ??????+ ??+ ?????+ ??+     ???????+??????+ ???????+"
+echo "  ??+====+??+====+ ??+==??+??|??+==??+??|     ??+====+??+==??+??+====+"
+echo "  ?????+  ??|      ??|  ??|??|???????|??|     ?????+  ??????++???????+"
+echo "  ??+==+  ??|      ??|  ??|??|??+==??|??|     ??+==+  ??+==??++====??|"
+echo "  ???????++??????+ ??????++??|??|  ??|???????+???????+??|  ??|???????|"
+echo "  +======+ +=====+ +=====+ +=++=+  +=++======++======++=+  +=++======+"
 echo -e "${NC}"
-echo -e "  ${BOLD}ViciDial Installer${NC} — AlmaLinux 9 | Asterisk 18 | CSF"
+echo -e "  ${BOLD}ViciDial Installer${NC} -- AlmaLinux 9 | Asterisk 18 | CSF"
 echo -e "  https://github.com/oaparicio1/ecdialers-install"
 hr
 echo ""
 
-# ── Verify root ──────────────────────────────────────────────────────────────
+# -- Verify root --------------------------------------------------------------
 [[ $EUID -ne 0 ]] && die "Must run as root"
 
-# ── Verify AlmaLinux 9 ───────────────────────────────────────────────────────
+# -- Verify AlmaLinux 9 -------------------------------------------------------
 if ! grep -q "AlmaLinux" /etc/os-release; then
     warn "This installer is tested on AlmaLinux 9 only. Proceed anyway? [y/N]"
     read -r ans; [[ "$ans" =~ ^[Yy]$ ]] || exit 0
 fi
 
-# ── Gather info ──────────────────────────────────────────────────────────────
+# -- Gather info --------------------------------------------------------------
 hr
 echo -e "${BOLD}Server Configuration${NC}"
 hr
@@ -80,14 +80,18 @@ echo ""
 warn "Starting installation. This will take 15-30 minutes."
 read -rp "Press Enter to continue or Ctrl+C to abort..."
 
-# ── Locale & timezone ────────────────────────────────────────────────────────
+# -- Installer directory (definido una sola vez) -------------------------------
+INSTALLER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+
+# -- Locale & timezone --------------------------------------------------------
 hr; log "Setting locale and timezone"
 dnf install -y glibc-langpack-en >/dev/null
 localectl set-locale en_US.UTF-8
 timedatectl set-timezone "$TIMEZONE"
 export LC_ALL=C
 
-# ── Base packages ────────────────────────────────────────────────────────────
+# -- Base packages ------------------------------------------------------------
 hr; log "Installing base packages and repos"
 
 dnf groupinstall "Development Tools" -y
@@ -97,14 +101,7 @@ dnf module enable php:remi-7.4 -y
 # MariaDB 10.5 via repo oficial (AlmaLinux 9 no tiene module stream mariadb:10.5)
 curl -LsS https://downloads.mariadb.com/MariaDB/mariadb_repo_setup |     bash -s -- --mariadb-server-version=mariadb-10.5 --skip-maxscale --skip-tools
 
-# Excluir mysql* del repo base para evitar conflictos con MariaDB
-# (perl-DBD-MySQL jala mysql-common que choca con MariaDB-common)
-for repo_file in /etc/yum.repos.d/almalinux*.repo /etc/yum.repos.d/epel*.repo; do
-    [ -f "$repo_file" ] && grep -q "^exclude=" "$repo_file" ||         sed -i '/^\[/a exclude=mysql*' "$repo_file" 2>/dev/null || true
-done
-# Alternativa directa: exclude en dnf.conf
-grep -q "^exclude=mysql" /etc/dnf/dnf.conf ||     echo "exclude=mysql*" >> /etc/dnf/dnf.conf
-log "MySQL excluido de repos base — usando MariaDB 10.5 exclusivamente ✓"
+# mysql* se excluye solo donde es necesario (--exclude=mysql* en dnf perl install)
 dnf install -y dnf-plugins-core
 dnf config-manager --set-enabled crb
 
@@ -124,24 +121,24 @@ dnf install -y \
     libsrtp-devel libedit-devel elfutils-libelf-devel \
     httpd httpd-tools mod_ssl
 
-# libss7 (puede no estar disponible en todos los repos — no crítico)
-dnf install -y libss7 libss7-devel 2>/dev/null || warn 'libss7 no disponible — continuando'
+# libss7 (puede no estar disponible en todos los repos -- no critico)
+dnf install -y libss7 libss7-devel 2>/dev/null || warn 'libss7 no disponible -- continuando'
 
-# sngrep (SIP capture tool) — repo de IRONTEC requerido en AlmaLinux 9
+# sngrep (SIP capture tool) -- repo de IRONTEC requerido en AlmaLinux 9
 dnf install -y bind-utils
 rpm -q sngrep &>/dev/null || {
-    dnf install -y 'https://packages.irontec.com/rhel/9/noarch/irontec-release-1.0-1.noarch.rpm' 2>/dev/null &&     dnf install -y sngrep 2>/dev/null || warn "sngrep no disponible — instalar manualmente si se necesita"
+    dnf install -y 'https://packages.irontec.com/rhel/9/noarch/irontec-release-1.0-1.noarch.rpm' 2>/dev/null &&     dnf install -y sngrep 2>/dev/null || warn "sngrep no disponible -- instalar manualmente si se necesita"
 }
 
-# ── Kernel headers ───────────────────────────────────────────────────────────
+# -- Kernel headers -----------------------------------------------------------
 dnf install -y "kernel-devel-$(uname -r)" "kernel-headers-$(uname -r)" || \
     dnf install -y kernel-devel kernel-headers
 
-# ── PHP config ───────────────────────────────────────────────────────────────
+# -- PHP config ---------------------------------------------------------------
 hr; log "Configuring PHP"
 cat >> /etc/php.ini << 'EOF'
 
-; ── ECdialers ViciDial config ──
+; -- ECdialers ViciDial config --
 error_reporting  = E_ALL & ~E_NOTICE
 memory_limit = 448M
 short_open_tag = On
@@ -160,7 +157,7 @@ echo "browscap = /etc/php.d/browscap.ini" >> /etc/php.ini
 wget -q -O /etc/php.d/browscap.ini https://browscap.org/stream?q=Lite_PHP_BrowsCap || \
     touch /etc/php.d/browscap.ini
 
-# ── MariaDB ──────────────────────────────────────────────────────────────────
+# -- MariaDB ------------------------------------------------------------------
 hr; log "Installing MariaDB"
 dnf install -y mariadb-server mariadb
 
@@ -225,10 +222,10 @@ mkdir -p /var/log/mysqld
 touch /var/log/mysqld/slow-queries.log
 chown -R mysql:mysql /var/log/mysqld
 
-systemctl enable --now mariadb || die 'MariaDB no pudo iniciar — revisar logs: journalctl -u mariadb'
-# httpd se habilita después de instalarlo (ver bloque final)
+systemctl enable --now mariadb || die 'MariaDB no pudo iniciar -- revisar logs: journalctl -u mariadb'
+# httpd se habilita despues de instalarlo (ver bloque final)
 
-# ── Perl modules ─────────────────────────────────────────────────────────────
+# -- Perl modules -------------------------------------------------------------
 hr; log "Installing Perl base modules via dnf"
 # --exclude=mysql* evita que cualquier dep chain jale mysql-common
 # que conflictua con MariaDB-common ya instalado
@@ -238,7 +235,6 @@ dnf install -y --exclude=mysql* \
 
 hr; log "Installing Perl CPAN modules via CPM (includes DBD::MySQL)"
 # CPM instala DBD::MySQL sin depender de mysql-common del sistema
-INSTALLER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 curl -fsSL https://raw.githubusercontent.com/skaji/cpm/main/cpm | perl - install -g App::cpm
 cd "${INSTALLER_DIR}" && /usr/local/bin/cpm install -g
 
@@ -247,14 +243,14 @@ cd /usr/src
 wget -q http://download.vicidial.com/required-apps/asterisk-perl-0.08.tar.gz
 tar xzf asterisk-perl-0.08.tar.gz
 cd asterisk-perl-0.08
-perl Makefile.PL && make all && make install || warn 'asterisk-perl falló — algunos scripts pueden no funcionar'
+perl Makefile.PL && make all && make install || warn 'asterisk-perl fallo -- algunos scripts pueden no funcionar'
 
-# ── Lame ─────────────────────────────────────────────────────────────────────
+# -- Lame ---------------------------------------------------------------------
 hr; log "Installing Lame"
 # Intentar desde RPM Fusion primero, si falla compilar desde fuente
 dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm 2>/dev/null || true
 dnf install -y lame lame-devel 2>/dev/null || {
-    warn "RPM Fusion lame no disponible — compilando desde fuente"
+    warn "RPM Fusion lame no disponible -- compilando desde fuente"
     cd /usr/src
     wget -q http://downloads.sourceforge.net/project/lame/lame/3.99/lame-3.99.5.tar.gz
     tar -zxf lame-3.99.5.tar.gz
@@ -262,7 +258,7 @@ dnf install -y lame lame-devel 2>/dev/null || {
     ./configure && make && make install
 }
 
-# ── Jansson ──────────────────────────────────────────────────────────────────
+# -- Jansson ------------------------------------------------------------------
 hr; log "Installing Jansson"
 cd /usr/src
 wget -q https://digip.org/jansson/releases/jansson-2.13.tar.gz
@@ -271,21 +267,21 @@ cd jansson-2.13
 ./configure && make clean && make && make install
 ldconfig
 
-# ── DAHDI ────────────────────────────────────────────────────────────────────
+# -- DAHDI --------------------------------------------------------------------
 hr; log "Installing DAHDI"
 ln -sf /usr/lib/modules/$(uname -r)/vmlinux.xz /boot/ 2>/dev/null || true
 # newt.h requerido para DAHDI tools
 mkdir -p /etc/include
-wget -q https://dialer.one/newt.h -O /etc/include/newt.h || warn 'newt.h no descargado — continuando'
+wget -q https://dialer.one/newt.h -O /etc/include/newt.h || warn 'newt.h no descargado -- continuando'
 
 mkdir -p /usr/src/dahdi-linux-complete-3.4.0+3.4.0
 cd /usr/src/dahdi-linux-complete-3.4.0+3.4.0
 wget -q https://raw.githubusercontent.com/oaparicio1/ecdialers-install/main/assets/dahdi-9.5-fix.zip
 unzip -q dahdi-9.5-fix.zip
 dnf install -y newt newt-devel
-make clean && make && make install && make install-config || warn 'DAHDI linux build falló — no crítico para WebRTC'
+make clean && make && make install && make install-config || warn 'DAHDI linux build fallo -- no critico para WebRTC'
 dnf install -y dahdi-tools-libs 2>/dev/null || true
-cd tools && make clean && make && make install && make install-config || warn 'DAHDI tools build falló'
+cd tools 2>/dev/null && make clean && make && make install && make install-config || warn 'DAHDI tools build fallo -- continuando'
 cp /etc/dahdi/system.conf.sample /etc/dahdi/system.conf
 modprobe dahdi 2>/dev/null || true
 modprobe dahdi_dummy 2>/dev/null || true
@@ -295,17 +291,17 @@ systemctl start dahdi 2>/dev/null || service dahdi start 2>/dev/null || true
 
 read -rp "DAHDI done. Press Enter to continue with Asterisk..."
 
-# ── libsrtp ──────────────────────────────────────────────────────────────────
+# -- libsrtp ------------------------------------------------------------------
 hr; log "Installing libsrtp 2.1.0"
 cd /usr/src
 wget -q https://github.com/cisco/libsrtp/archive/v2.1.0.tar.gz -O libsrtp-2.1.0.tar.gz
 tar xf libsrtp-2.1.0.tar.gz
 cd libsrtp-2.1.0
 ./configure --prefix=/usr --enable-openssl
-make shared_library && make install || warn 'libsrtp system install falló — usando bundled de Asterisk'
+make shared_library && make install || warn 'libsrtp system install fallo -- usando bundled de Asterisk'
 ldconfig
 
-# ── Asterisk 18 ──────────────────────────────────────────────────────────────
+# -- Asterisk 18 --------------------------------------------------------------
 hr; log "Installing Asterisk 18.21.0-vici"
 mkdir -p /usr/src/asterisk && cd /usr/src/asterisk
 wget -q https://downloads.asterisk.org/pub/telephony/libpri/libpri-1.6.1.tar.gz
@@ -332,10 +328,10 @@ mkdir -p /var/lib/asterisk/phoneprov
 mkdir -p /var/lib/asterisk/sounds
 mkdir -p /var/spool/asterisk/voicemail/default/1234/INBOX
 
-make samples || warn 'make samples tuvo errores menores — continuando'
+make samples || warn 'make samples tuvo errores menores -- continuando'
 sed -i 's|noload = chan_sip.so|;noload = chan_sip.so|g' /etc/asterisk/modules.conf
 
-make -j "${JOBS}" all && make install || die 'Asterisk build falló — revisar errores arriba'
+make -j "${JOBS}" all && make install || die 'Asterisk build fallo -- revisar errores arriba'
 
 # Fix modules
 cat >> /etc/asterisk/modules.conf << 'EOF'
@@ -358,19 +354,20 @@ eventfilter=Event: Meetme
 eventfilter=Event: Confbridge
 EOF
 
-# Verificar que Asterisk quedó instalado
-[ -f /usr/sbin/asterisk ] || die 'Asterisk no se instaló — revisar errores de compilación'
-log "Asterisk $(/usr/sbin/asterisk -V 2>/dev/null) instalado ✓"
+# Verificar que Asterisk quedo instalado
+[ -f /usr/sbin/asterisk ] || die 'Asterisk no se instalo -- revisar errores de compilacion'
+log "Asterisk $(/usr/sbin/asterisk -V 2>/dev/null) instalado OK"
 read -rp "Asterisk done. Press Enter to continue with ViciDial..."
 
-# ── ViciDial (astguiclient) ───────────────────────────────────────────────────
+# -- ViciDial (astguiclient) ---------------------------------------------------
 hr; log "Installing ViciDial (astguiclient trunk)"
 mkdir -p /usr/src/astguiclient && cd /usr/src/astguiclient
-svn checkout svn://svn.eflo.net/agc_2-X/trunk || die 'SVN checkout falló — verificar conectividad'
+svn checkout svn://svn.eflo.net/agc_2-X/trunk || die 'SVN checkout fallo -- verificar conectividad'
 
-# ── MySQL databases ──────────────────────────────────────────────────────────
+# -- MySQL databases ----------------------------------------------------------
 hr; log "Creating MySQL databases and users"
-mysql -u root << MYSQLEOF || die 'Error creando DB/usuarios MySQL — revisar MariaDB'
+# --force ignora duplicate key errors de first_server_install.sql (no criticos)
+mysql -u root --force << MYSQLEOF
 CREATE DATABASE IF NOT EXISTS asterisk DEFAULT CHARACTER SET utf8 COLLATE utf8_unicode_ci;
 CREATE USER IF NOT EXISTS 'cron'@'localhost' IDENTIFIED BY '${DB_PASS}';
 GRANT SELECT,CREATE,ALTER,INSERT,UPDATE,DELETE,LOCK TABLES ON asterisk.* TO cron@'%' IDENTIFIED BY '${DB_PASS}';
@@ -390,11 +387,12 @@ USE asterisk;
 UPDATE servers SET asterisk_version='18.21.1-vici';
 QUIT
 MYSQLEOF
+[ $? -ne 0 ] && die 'Error critico en MySQL -- revisar MariaDB'
 
-# ── astguiclient.conf ─────────────────────────────────────────────────────────
+# -- astguiclient.conf ---------------------------------------------------------
 hr; log "Writing astguiclient.conf"
 cat > /etc/astguiclient.conf << ASTGUI
-# astguiclient.conf — ECdialers ViciDial
+# astguiclient.conf -- ECdialers ViciDial
 
 PATHhome => /usr/share/astguiclient
 PATHlogs => /var/log/astguiclient
@@ -431,14 +429,14 @@ ASTGUI
 
 sed -i "s/SERVERIP/${SERVER_IP}/g" /etc/astguiclient.conf
 
-# ── ViciDial install.pl ───────────────────────────────────────────────────────
+# -- ViciDial install.pl -------------------------------------------------------
 hr; log "Running ViciDial install.pl"
 cd /usr/src/astguiclient/trunk
-perl install.pl --no-prompt --copy_sample_conf_files=Y || warn 'install.pl fase 1 tuvo advertencias — verificar'
-perl install.pl --no-prompt || warn 'install.pl fase 2 tuvo advertencias — verificar'
-# Verificar que ViciDial quedó instalado correctamente
-[ -f /usr/share/astguiclient/ADMIN_keepalive_ALL.pl ] || die 'ViciDial no se instaló correctamente — revisar output de install.pl'
-log "ViciDial instalado correctamente ✓"'''
+perl install.pl --no-prompt --copy_sample_conf_files=Y || warn 'install.pl fase 1 tuvo advertencias -- verificar'
+perl install.pl --no-prompt || warn 'install.pl fase 2 tuvo advertencias -- verificar'
+# Verificar que ViciDial quedo instalado correctamente
+[ -f /usr/share/astguiclient/ADMIN_keepalive_ALL.pl ] || die 'ViciDial no se instalo correctamente -- revisar output de install.pl'
+log "ViciDial instalado correctamente OK"
 
 # Update server IP
 /usr/share/astguiclient/ADMIN_update_server_ip.pl \
@@ -447,7 +445,7 @@ log "ViciDial instalado correctamente ✓"'''
 # Populate area codes
 /usr/share/astguiclient/ADMIN_area_code_populate.pl 2>/dev/null || true
 
-# ── Asterisk sounds ───────────────────────────────────────────────────────────
+# -- Asterisk sounds -----------------------------------------------------------
 hr; log "Installing Asterisk sounds"
 cd /usr/src
 for pkg in \
@@ -500,27 +498,26 @@ Alias /RECORDINGS/MP3 "/var/spool/asterisk/monitorDONE/MP3/"
 </Directory>
 EOF
 
-# ── Sounds web folder ────────────────────────────────────────────────────────
+# -- Sounds web folder --------------------------------------------------------
 log "Copying sounds to web-accessible folder"
 mkdir -p /var/www/html/hgcjvmrjzqcngw47wf5zf4xjzd9n0k
 cp -r /var/lib/asterisk/sounds/* /var/www/html/hgcjvmrjzqcngw47wf5zf4xjzd9n0k/ 2>/dev/null || true
 
-# ── ip_relay ──────────────────────────────────────────────────────────────────
+# -- ip_relay ------------------------------------------------------------------
 hr; log "Building ip_relay"
 cd /usr/src/astguiclient/trunk/extras/ip_relay/
 unzip -q ip_relay_1.1.112705.zip 2>/dev/null || true
 cd ip_relay_1.1/src/unix/ 2>/dev/null || true
-make 2>/dev/null && cp ip_relay ip_relay2 &&     mv -f ip_relay /usr/bin/ && mv -f ip_relay2 /usr/local/bin/ip_relay &&     log "ip_relay instalado ✓" || warn "ip_relay build falló — monitoreo ciego no disponible (no crítico)""
+make 2>/dev/null && cp ip_relay ip_relay2 &&     mv -f ip_relay /usr/bin/ && mv -f ip_relay2 /usr/local/bin/ip_relay &&     log "ip_relay instalado OK" || warn "ip_relay build fallo -- monitoreo ciego no disponible (no critico)"
 
-# ── G.729 codec ───────────────────────────────────────────────────────────────
+# -- G.729 codec ---------------------------------------------------------------
 # G.729 requiere licencia comercial. Instalar manualmente si se requiere:
 #   cd /usr/lib64/asterisk/modules
 #   wget -O codec_g729.so TU_FUENTE/codec_g729-ast18-x86_64.so && chmod 755 codec_g729.so
-warn "G.729 omitido — install manually if needed"
+warn "G.729 omitido -- install manually if needed"
 
-# ── ConfBridge ────────────────────────────────────────────────────────────────
+# -- ConfBridge ----------------------------------------------------------------
 hr; log "Setting up ConfBridge"
-INSTALLER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [ -f "${INSTALLER_DIR}/extensions.conf" ] && \
     cp -f "${INSTALLER_DIR}/extensions.conf" /etc/asterisk/extensions.conf
 [ -f "${INSTALLER_DIR}/confbridge-vicidial.conf" ] && \
@@ -537,14 +534,14 @@ ip = sys.argv[1]
 vals = ",".join(f"({9600000+i},'{ip}','','0',NULL)" for i in range(300))
 sql = f"USE asterisk; INSERT IGNORE INTO vicidial_confbridges VALUES {vals};"
 subprocess.run(["mysql", "-u", "root", "-e", sql], check=True)
-print(f"✓ 300 confbridges inserted for {ip}")
+print(f"OK 300 confbridges inserted for {ip}")
 PYEOF
 
-# ── ECPhone ───────────────────────────────────────────────────────────────────
+# -- ECPhone -------------------------------------------------------------------
 hr; log "Installing ECPhone (WebRTC softphone)"
 cd /var/www/html
 if [ -d ECPhone ]; then
-    warn "ECPhone already exists — pulling latest"
+    warn "ECPhone already exists -- pulling latest"
     cd ECPhone && git pull
 else
     git clone https://github.com/oaparicio1/ECPhone.git
@@ -553,14 +550,10 @@ chmod -R 744 ECPhone
 chown -R apache:apache ECPhone
 
 # Update ViciDial system settings for ECPhone
-mysql -u root -e "USE asterisk;
-    UPDATE system_settings SET
-        webphone_url='https://${HOSTNAME}/ECPhone/ecphone.php',
-        sounds_web_server='https://${HOSTNAME}',
-        active_voicemail_server='${SERVER_IP}';"
-log "ECPhone configured in system_settings ✓"
+mysql -u root -e "USE asterisk; UPDATE system_settings SET webphone_url='https://\${HOSTNAME}/ECPhone/ecphone.php', sounds_web_server='https://\${HOSTNAME}', active_voicemail_server='\${SERVER_IP}';" 
+log "ECPhone configured in system_settings OK"
 
-# ── SSL (certbot) ─────────────────────────────────────────────────────────────
+# -- SSL (certbot) -------------------------------------------------------------
 hr; log "Setting up SSL with certbot"
 dnf install -y certbot python3-certbot-apache
 systemctl enable --now certbot-renew.timer
@@ -568,12 +561,11 @@ systemctl enable --now certbot-renew.timer
 # Temporarily open 80/443 for certbot validation
 systemctl stop csf 2>/dev/null || true
 certbot --apache -d "${HOSTNAME}" --non-interactive --agree-tos \
-    -m "admin@ecdialers.com" --redirect && log "SSL configurado ✓" || \
-    warn "Certbot falló — correr manualmente después: certbot --apache -d ${HOSTNAME}""
+    -m "admin@ecdialers.com" --redirect && log "SSL configurado OK" || \
+    warn "Certbot fallo -- correr manualmente despues: certbot --apache -d ${HOSTNAME}"
 
-# ── WebRTC ────────────────────────────────────────────────────────────────────
+# -- WebRTC --------------------------------------------------------------------
 hr; log "Enabling WebRTC in ViciDial"
-INSTALLER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -f "${INSTALLER_DIR}/vicidial-enable-webrtc.sh" ]; then
     chmod +x "${INSTALLER_DIR}/vicidial-enable-webrtc.sh"
     bash "${INSTALLER_DIR}/vicidial-enable-webrtc.sh"
@@ -581,12 +573,12 @@ fi
 
 sed -i 's/SERVER_EXTERNAL_IP/0.0.0.0/' /etc/asterisk/pjsip.conf 2>/dev/null || true
 
-# ── XSS fix ───────────────────────────────────────────────────────────────────
+# -- XSS fix -------------------------------------------------------------------
 log "Applying XSS fix to sse.php"
 sed -i "7s/.*/echo \"retry: \" . (int)(\$_GET['refresh_interval'] ?? 0) . \"\\\\n\";/" \
     /var/www/html/agc/sse.php 2>/dev/null || true
 
-# ── Cockpit ───────────────────────────────────────────────────────────────────
+# -- Cockpit -------------------------------------------------------------------
 hr; log "Installing Cockpit"
 dnf install -y cockpit
 dnf install -y cockpit-storaged 2>/dev/null || dnf install -y cockpit-storage 2>/dev/null || true
@@ -602,51 +594,69 @@ if [ -d "$CERT_PATH" ]; then
     systemctl restart cockpit.socket
 fi
 
-# ── CSF Firewall ─────────────────────────────────────────────────────────────
+# -- CSF Firewall -------------------------------------------------------------
 hr; log "Installing and configuring CSF Firewall"
-cd /usr/src
-wget -q https://download.configserver.com/csf.tgz
-tar -xzf csf.tgz && cd csf
-sh install.sh
+mkdir -p /usr/src/csf-install && cd /usr/src/csf-install
+
+# Descargar CSF desde Sentinel (con verbose para detectar errores)
+wget --no-verbose --timeout=60 \
+    https://github.com/sentinelfirewall/sentinel/raw/refs/heads/main/csf.tgz \
+    -O csf.tgz 2>&1 || die "CSF download fallo"
+
+# Verificar que el archivo descargo correctamente
+[ -f csf.tgz ] || die "csf.tgz no existe despues de wget"
+[ -s csf.tgz ] || die "csf.tgz esta vacio -- descarga incompleta"
+file csf.tgz | grep -qi "gzip\|tar" || die "csf.tgz no es un archivo tar valido -- posible error de descarga"
+
+log "CSF descargado: $(du -sh csf.tgz | cut -f1)"
+tar -xzf csf.tgz || die "CSF tar extract fallo"
+
+# Buscar el directorio extraido
+CSF_DIR=$(tar -tzf csf.tgz 2>/dev/null | head -1 | cut -d'/' -f1)
+CSF_DIR="${CSF_DIR:-csf}"
+cd "/usr/src/csf-install/${CSF_DIR}" || die "Directorio CSF '${CSF_DIR}' no encontrado"
+
+sh install.sh || die "CSF install.sh fallo"
+log "CSF instalado OK"
 
 # ECdialers CSF configuration
 cat > /etc/csf/csf.conf << 'CSFCONF'
-# CSF Configuration — ECdialers ViciDial Server
+# CSF Configuration -- ECdialers ViciDial Server
 TESTING = "0"
 RESTRICT_SYSLOG = "3"
 
-# ── Inbound TCP ──
+# -- Inbound TCP --
 TCP_IN = "22,80,443,5060,5061,8089,9000-9100"
 
-# ── Outbound TCP ──
+# -- Outbound TCP --
 TCP_OUT = "20,21,22,25,53,80,443,587,993,995,5060,5061"
 
-# ── Inbound UDP ──
+# -- Inbound UDP --
 UDP_IN = "5060,5061,10000:20000"
 
-# ── Outbound UDP ──
+# -- Outbound UDP --
 UDP_OUT = "20,21,53,113,123,5060,5061,10000:20000"
 
-# ── IPv6 ──
+# -- IPv6 --
 TCP6_IN  = ""
 TCP6_OUT = ""
 UDP6_IN  = ""
 UDP6_OUT = ""
 
-# ── Rate limiting ──
+# -- Rate limiting --
 LF_TRIGGER = "1"
 LF_TRIGGER_PERM = "1"
 DENY_TEMP_IP_LIMIT = "200"
 LF_SELECT = "0"
 
-# ── Port scan protection ──
+# -- Port scan protection --
 PS_INTERVAL = "0"
 
-# ── Brute force ──
+# -- Brute force --
 LF_SSHD = "5"
 LF_SSHD_PERM = "1"
 
-# ── Login failure daemon ──
+# -- Login failure daemon --
 LF_FTPD = "10"
 LF_SMTPAUTH = "5"
 LF_EXIMSYNTAX = "0"
@@ -659,26 +669,26 @@ LF_MODSEC = "5"
 LF_DISTATTACK = "0"
 LF_WEBMIN = "5"
 
-# ── Email alerts ──
+# -- Email alerts --
 LF_ALERT = "1"
 LF_ALERT_TO = "admin@ecdialers.com"
 LF_ALERT_FROM = "csf@ecdialers.com"
 
-# ── SYN flood ──
+# -- SYN flood --
 SYNFLOOD = "0"
 SYNFLOOD_RATE = "75/s"
 SYNFLOOD_BURST = "25"
 
-# ── Connection limit ──
+# -- Connection limit --
 CONNLIMIT = ""
 PORTFLOOD = ""
 
-# ── Logging ──
+# -- Logging --
 SYSLOG = "1"
 LOGDROP = "0"
 LOGDROPOUT = "0"
 
-# ── Misc ──
+# -- Misc --
 ETH_DEVICE = ""
 ETH6_DEVICE = ""
 ICMP_IN = "1"
@@ -699,16 +709,16 @@ MESSENGER_SSL_PORT = "443"
 CSFCONF
 
 # Allow server's own IP in CSF
-csf -a "${SERVER_IP}" "ECdialers Server IP"
+csf -a "${SERVER_IP}" "ECdialers Server IP" 2>/dev/null || warn "CSF allow IP fallo -- agregar manualmente: csf -a ${SERVER_IP}"
 
-csf -r || true
-systemctl enable csf lfd || true
-log "CSF Firewall configured ✓"
+csf -r 2>/dev/null || true
+systemctl enable csf lfd 2>/dev/null || warn "CSF service enable fallo -- puede requerir reboot"
+log "CSF Firewall configured OK"
 
-# ── SSH hardening ─────────────────────────────────────────────────────────────
+# -- SSH hardening -------------------------------------------------------------
 sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
 
-# ── Asterisk service ──────────────────────────────────────────────────────────
+# -- Asterisk service ----------------------------------------------------------
 hr; log "Creating Asterisk systemd service"
 cat > /etc/systemd/system/asterisk.service << 'EOF'
 [Unit]
@@ -725,7 +735,7 @@ ExecReload=/bin/kill -HUP $MAINPID
 WantedBy=basic.target
 EOF
 
-# ── rc.local ──────────────────────────────────────────────────────────────────
+# -- rc.local ------------------------------------------------------------------
 hr; log "Configuring rc.local"
 sed -i 's|exit 0|### exit 0|g' /etc/rc.d/rc.local
 
@@ -773,7 +783,7 @@ RemainAfterExit=yes
 WantedBy=multi-user.target
 EOF
 
-# ── Crontab ───────────────────────────────────────────────────────────────────
+# -- Crontab -------------------------------------------------------------------
 hr; log "Installing crontab"
 cat > /root/crontab-file << 'CRONTAB'
 
@@ -845,7 +855,7 @@ CRONTAB
 
 crontab /root/crontab-file
 
-# ── Permissions & fstab ───────────────────────────────────────────────────────
+# -- Permissions & fstab -------------------------------------------------------
 hr; log "Final permissions and fstab"
 
 groupadd asterisk 2>/dev/null || true
@@ -859,64 +869,73 @@ chmod -R 777 /var/spool/asterisk
 grep -q "var/spool/asterisk/monitor" /etc/fstab || \
     echo "none /var/spool/asterisk/monitor tmpfs nodev,nosuid,noexec,nodiratime,size=2G 0 0" >> /etc/fstab
 
-# ── Welcome page ─────────────────────────────────────────────────────────────
+# -- Welcome page -------------------------------------------------------------
 cat > /var/www/html/index.html << 'EOF'
 <META HTTP-EQUIV=REFRESH CONTENT="1; URL=/vicidial/welcome.php">
 Redirecting to ViciDial...
 EOF
 
-# ── Disable debug kernel ──────────────────────────────────────────────────────
-dnf remove kernel-debug* -y 2>/dev/null || true
+# -- Disable debug kernel ------------------------------------------------------
+# Remover kernel-debug si existe (no critico si no esta instalado)
+dnf remove -y kernel-debug kernel-devel-debug 2>/dev/null | grep -v 'No match' || true
 
-# ── chkconfig asterisk off ────────────────────────────────────────────────────
+# -- chkconfig asterisk off ----------------------------------------------------
 chkconfig asterisk off 2>/dev/null || true
+# Asegurar que asterisk no arranca automaticamente
+systemctl disable asterisk 2>/dev/null || true
 
-# ── Systemd reload ────────────────────────────────────────────────────────────
-systemctl daemon-reload
+# -- Systemd reload ------------------------------------------------------------
+timeout 30 systemctl daemon-reload || true
 systemctl enable rc-local.service
-systemctl start  rc-local.service
+# NO iniciar rc-local durante instalacion -- intenta arrancar Asterisk y se cuelga
+# rc-local arrancara automaticamente en el proximo reboot
+log "rc-local habilitado para boot (no se inicia durante instalacion) OK"
 systemctl enable httpd mariadb
-systemctl restart httpd mariadb
+systemctl restart mariadb 2>/dev/null || warn "MariaDB restart fallo"
+systemctl restart httpd 2>/dev/null || warn "httpd restart fallo -- revisar config"
+# Verificar que httpd esta corriendo
+systemctl is-active httpd >/dev/null 2>&1 && log "httpd corriendo OK" || warn "httpd no esta activo -- revisar: journalctl -u httpd"
+systemctl is-active mariadb >/dev/null 2>&1 && log "MariaDB corriendo OK" || warn "MariaDB no esta activo" 
 
-# ── SSH banner ────────────────────────────────────────────────────────────────
+# -- SSH banner ----------------------------------------------------------------
 sed -i 's|#Banner none|Banner /etc/ssh/sshd_banner|g' /etc/ssh/sshd_config
 cat > /etc/ssh/sshd_banner << 'EOF'
-╔══════════════════════════════════════════╗
-║         ECdialers ViciDial Server        ║
-║    Unauthorized access is prohibited     ║
-║         support@ecdialers.com            ║
-╚══════════════════════════════════════════╝
++==========================================+
+|         ECdialers ViciDial Server        |
+|    Unauthorized access is prohibited     |
+|         support@ecdialers.com            |
++==========================================+
 EOF
 
-# ── Final summary ─────────────────────────────────────────────────────────────
+# -- Final summary -------------------------------------------------------------
 sleep 1
 clear
 echo -e "\033[0;32m"
-echo "    ███████╗ ██████╗    ██████╗ ██╗ █████╗ ██╗     ███████╗██████╗ ███████╗"
-echo "    ██╔════╝██╔════╝    ██╔══██╗██║██╔══██╗██║     ██╔════╝██╔══██╗██╔════╝"
-echo "    █████╗  ██║         ██║  ██║██║███████║██║     █████╗  ██████╔╝███████╗"
-echo "    ██╔══╝  ██║         ██║  ██║██║██╔══██║██║     ██╔══╝  ██╔══██╗╚════██║"
-echo "    ███████╗╚██████╗    ██████╔╝██║██║  ██║███████╗███████╗██║  ██║███████║"
-echo "    ╚══════╝ ╚═════╝    ╚═════╝ ╚═╝╚═╝  ╚═╝╚══════╝╚══════╝╚═╝  ╚═╝╚══════╝"
+echo "    ???????+ ??????+    ??????+ ??+ ?????+ ??+     ???????+??????+ ???????+"
+echo "    ??+====+??+====+    ??+==??+??|??+==??+??|     ??+====+??+==??+??+====+"
+echo "    ?????+  ??|         ??|  ??|??|???????|??|     ?????+  ??????++???????+"
+echo "    ??+==+  ??|         ??|  ??|??|??+==??|??|     ??+==+  ??+==??++====??|"
+echo "    ???????++??????+    ??????++??|??|  ??|???????+???????+??|  ??|???????|"
+echo "    +======+ +=====+    +=====+ +=++=+  +=++======++======++=+  +=++======+"
 echo -e "\033[0m"
 sleep 0.5
 
 echo -e "\033[1;36m"
-echo "              (•_•)"
-echo "              ( •_•)>⌐■-■"
-echo "              (⌐■_■)"
+echo "              (?_?)"
+echo "              ( ?_?)>?*-*"
+echo "              (?*_*)"
 echo ""
 echo "         INSTALLATION COMPLETE, BOSS."
 echo -e "\033[0m"
 sleep 0.8
 
 echo -e "\033[1;33m"
-echo "  ┌─────────────────────────────────────────────────────────┐"
-echo "  │                                                         │"
-echo "  │   ViciDial is UP. CSF is LOCKED. ECPhone is READY.     │"
-echo "  │   Your dialer just got a whole lot cooler. 😎           │"
-echo "  │                                                         │"
-echo "  └─────────────────────────────────────────────────────────┘"
+echo "  ?---------------------------------------------------------?"
+echo "  |                                                         |"
+echo "  |   ViciDial is UP. CSF is LOCKED. ECPhone is READY.     |"
+echo "  |   Your dialer just got a whole lot cooler. ?           |"
+echo "  |                                                         |"
+echo "  ?---------------------------------------------------------?"
 echo -e "\033[0m"
 sleep 0.5
 
@@ -930,20 +949,20 @@ echo -e "  ${BOLD}ECPhone:${NC}      https://${HOSTNAME}/ECPhone/ecphone.php"
 echo -e "  ${BOLD}Cockpit:${NC}      https://${HOSTNAME}:9090"
 echo ""
 echo -e "  ${BOLD}Default credentials:${NC}"
-echo -e "  ViciDial admin: ${YELLOW}admin / admin${NC} ← CHANGE THIS"
+echo -e "  ViciDial admin: ${YELLOW}admin / admin${NC} ? CHANGE THIS"
 echo -e "  MySQL cron:     ${YELLOW}cron / ${DB_PASS}${NC}"
 echo ""
 echo -e "  ${BOLD}Next steps:${NC}"
 echo -e "  1. Change ViciDial admin password"
-echo -e "  2. Set server IP in ViciDial: Admin → Servers"
+echo -e "  2. Set server IP in ViciDial: Admin -> Servers"
 echo -e "  3. Configure SIP trunk / carrier"
 echo -e "  4. Enable WebRTC phone template (rtcp_mux=yes)"
 echo -e "  5. Review CSF rules: /etc/csf/csf.conf"
 echo ""
 hr
-# ── VM Detection (dial-dropdown) ────────────────────────────────────────────
+# -- VM Detection (dial-dropdown) --------------------------------------------
 hr; log "Installing VM detection (dial-dropdown)"
-curl -sL https://download.amdy.io/download/dial-dropdown.sh | bash ||     warn "dial-dropdown install failed — instalar manualmente si se requiere"
+curl -sL https://download.amdy.io/download/dial-dropdown.sh | bash ||     warn "dial-dropdown install failed -- instalar manualmente si se requiere"
 
 read -rp "Press Enter to reboot..."
 reboot
