@@ -594,36 +594,30 @@ if [ -d "$CERT_PATH" ]; then
     systemctl restart cockpit.socket
 fi
 
-# -- CSF Firewall (Sentinel) --------------------------------------------------
+# -- CSF Firewall -------------------------------------------------------------
 hr; log "Installing and configuring CSF Firewall"
+mkdir -p /usr/src/csf-install && cd /usr/src/csf-install
 
-# Prerequisitos para CSF
-dnf install -y wget tar perl 2>/dev/null || true
+# Descargar CSF desde Sentinel (con verbose para detectar errores)
+wget --no-verbose --timeout=60 \
+    https://github.com/sentinelfirewall/sentinel/raw/refs/heads/main/csf.tgz \
+    -O csf.tgz 2>&1 || die "CSF download fallo"
 
-# Descargar desde Sentinel — siguiendo pasos oficiales
-cd /root
-rm -f csf.tgz
-wget --timeout=60 -L \
-    https://raw.githubusercontent.com/sentinelfirewall/sentinel/refs/heads/main/csf.tgz \
-    || die "CSF download fallo"
+# Verificar que el archivo descargo correctamente
+[ -f csf.tgz ] || die "csf.tgz no existe despues de wget"
+[ -s csf.tgz ] || die "csf.tgz esta vacio -- descarga incompleta"
+file csf.tgz | grep -qi "gzip\|tar" || die "csf.tgz no es un archivo tar valido -- posible error de descarga"
 
-# Verificar descarga
-[ -f /root/csf.tgz ] || die "csf.tgz no encontrado"
-[ -s /root/csf.tgz ] || die "csf.tgz vacio -- descarga incompleta"
-log "CSF descargado: $(du -sh /root/csf.tgz | cut -f1)"
+log "CSF descargado: $(du -sh csf.tgz | cut -f1)"
+tar -xzf csf.tgz || die "CSF tar extract fallo"
 
-# Extraer
-tar -xzf /root/csf.tgz -C /root/ || die "CSF extract fallo"
-[ -d /root/csf ] || die "Directorio /root/csf no encontrado despues de extract"
+# Buscar el directorio extraido
+CSF_DIR=$(tar -tzf csf.tgz 2>/dev/null | head -1 | cut -d'/' -f1)
+CSF_DIR="${CSF_DIR:-csf}"
+cd "/usr/src/csf-install/${CSF_DIR}" || die "Directorio CSF '${CSF_DIR}' no encontrado"
 
-# Instalar
-cd /root/csf
 sh install.sh || die "CSF install.sh fallo"
 log "CSF instalado OK"
-
-# Cleanup
-cd /root
-rm -rf /root/csf /root/csf.tgz
 
 # ECdialers CSF configuration
 cat > /etc/csf/csf.conf << 'CSFCONF'
