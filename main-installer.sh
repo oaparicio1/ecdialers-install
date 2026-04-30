@@ -619,7 +619,8 @@ fi
 hr; log "Enabling WebRTC in ViciDial"
 if [ -f "${INSTALLER_DIR}/vicidial-enable-webrtc.sh" ]; then
     chmod +x "${INSTALLER_DIR}/vicidial-enable-webrtc.sh"
-    bash "${INSTALLER_DIR}/vicidial-enable-webrtc.sh"
+    # Pass domain and email so script runs fully unattended
+    bash "${INSTALLER_DIR}/vicidial-enable-webrtc.sh" "${HOSTNAME}" "admin@ecdialers.com"
 fi
 
 sed -i 's/SERVER_EXTERNAL_IP/0.0.0.0/' /etc/asterisk/pjsip.conf 2>/dev/null || true
@@ -977,6 +978,20 @@ cat > /etc/ssh/sshd_banner << 'EOF'
 |         support@ecdialers.com            |
 +==========================================+
 EOF
+
+# ── Schema patches — add columns that may be missing in fresh ViciDial installs ──
+hr; log "Applying schema patches"
+mysql -u root asterisk --force << 'SCHEMAEOF'
+ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS INSERT_before_body_close text DEFAULT NULL;
+ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS webphone_width varchar(10) DEFAULT '260';
+ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS webphone_height varchar(10) DEFAULT '440';
+ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS webphone_systemkey varchar(50) DEFAULT 'webrtc';
+ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS agent_screen_webphone_layout varchar(200) DEFAULT '';
+SCHEMAEOF
+
+# Set ECphone skin injection
+mysql -u root asterisk -e "UPDATE system_settings SET INSERT_before_body_close='<script src="/agc/ec_agent_skin.js"></script>' WHERE INSERT_before_body_close IS NULL OR INSERT_before_body_close='';"
+log "Schema patches applied ✓"
 
 # ── Final IP update — run LAST after everything is installed ─────────────────
 hr; log "Updating all server IPs from 10.10.10.15 to ${SERVER_IP}"
