@@ -89,6 +89,17 @@ hr; log "Setting locale and timezone"
 dnf install -y glibc-langpack-en >/dev/null
 localectl set-locale en_US.UTF-8
 timedatectl set-timezone "$TIMEZONE"
+# ── SELinux check + disable ───────────────────────────────────────────────────
+SELINUX_STATUS=$(getenforce 2>/dev/null || echo "Disabled")
+if [ "$SELINUX_STATUS" = "Enforcing" ] || [ "$SELINUX_STATUS" = "Permissive" ]; then
+    warn "SELinux is ${SELINUX_STATUS} — disabling for ViciDial compatibility"
+    sed -i 's/SELINUX=enforcing/SELINUX=disabled/g' /etc/selinux/config
+    sed -i 's/SELINUX=permissive/SELINUX=disabled/g' /etc/selinux/config
+    setenforce 0 2>/dev/null || true
+    log "SELinux disabled (runtime + config) ✓"
+else
+    log "SELinux already disabled ✓"
+fi
 export LC_ALL=C
 
 # -- Base packages ------------------------------------------------------------
@@ -775,13 +786,6 @@ csf -a "${SERVER_IP}" "ECdialers Server IP" 2>/dev/null || warn "CSF allow IP fa
 csf -r 2>/dev/null || true
 systemctl enable csf lfd 2>/dev/null || warn "CSF service enable failed -- may require reboot"
 log "CSF Firewall configured OK"
-
-# Apache sudoers for CSF — required for Vicidial Metrics Security module
-echo "apache ALL=(root) NOPASSWD: /usr/sbin/csf, /bin/cat /etc/csf/csf.allow, /bin/cat /etc/csf/csf.deny" > /etc/sudoers.d/apache-csf
-chmod 440 /etc/sudoers.d/apache-csf
-chmod 644 /etc/csf/csf.allow
-chmod 644 /etc/csf/csf.deny
-log "Apache sudoers + CSF permissions configured OK"
 
 # -- SSH hardening -------------------------------------------------------------
 sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
