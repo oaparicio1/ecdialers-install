@@ -1,3 +1,7 @@
+# Critical DB modules — must be installed before ViciDial install.pl
+requires 'DBI';
+requires 'DBD::mysql', '== 4.050';  # 5.x has compile issues with MariaDB 10.5
+
 requires 'Archive::Zip';
 requires 'Bundle::CPAN';
 requires 'Compress::Raw::Zlib';
