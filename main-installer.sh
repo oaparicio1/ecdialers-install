@@ -776,6 +776,13 @@ csf -r 2>/dev/null || true
 systemctl enable csf lfd 2>/dev/null || warn "CSF service enable failed -- may require reboot"
 log "CSF Firewall configured OK"
 
+# Apache sudoers for CSF — required for Vicidial Metrics Security module
+echo "apache ALL=(root) NOPASSWD: /usr/sbin/csf, /bin/cat /etc/csf/csf.allow, /bin/cat /etc/csf/csf.deny" > /etc/sudoers.d/apache-csf
+chmod 440 /etc/sudoers.d/apache-csf
+chmod 644 /etc/csf/csf.allow
+chmod 644 /etc/csf/csf.deny
+log "Apache sudoers + CSF permissions configured OK"
+
 # -- SSH hardening -------------------------------------------------------------
 sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
 
