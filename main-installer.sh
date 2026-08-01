@@ -10,6 +10,12 @@
 #   cd ecdialers-install
 #   chmod +x main-installer.sh
 #   ./main-installer.sh
+#
+# Unattended (driven by the ECdialers Portal provisioning engine):
+#   ECDIALERS_HOSTNAME=d04.example.com ECDIALERS_TZ=America/New_York \
+#   ECDIALERS_DB_PASS='s3cret' ./main-installer.sh --yes
+#   Optional: ECDIALERS_DB_CHOICE=1|2|3 (default 2 = keep data, never drops).
+#   With --yes there are no prompts and no auto-reboot.
 # ============================================================================
 # set -euo pipefail -- desactivado para permitir continuar ante errores no criticos
 set -uo pipefail 2>/dev/null || true
@@ -22,6 +28,19 @@ log()  { echo -e "${GREEN}[EC]${NC} $*"; }
 warn() { echo -e "${YELLOW}[!!]${NC} $*"; }
 die()  { echo -e "${RED}[ERR]${NC} $*" >&2; exit 1; }
 hr()   { echo -e "${CYAN}==================================================${NC}"; }
+
+# -- Unattended mode ----------------------------------------------------------
+# Drive the installer non-interactively (used by the ECdialers Portal provisioning
+# engine). Pass --yes/-y and supply answers via env:
+#   ECDIALERS_HOSTNAME, ECDIALERS_TZ, ECDIALERS_DB_PASS, ECDIALERS_DB_CHOICE(1|2|3)
+UNATTENDED=0
+for _arg in "$@"; do
+    case "$_arg" in
+        --yes|-y|--unattended) UNATTENDED=1 ;;
+    esac
+done
+# pause: a "Press Enter" gate that becomes a no-op when unattended.
+pause() { [[ "$UNATTENDED" == "1" ]] && return 0; read -rp "$1"; }
 
 # ── Banner ───────────────────────────────────────────────────────────────────
 clear
@@ -44,8 +63,12 @@ echo ""
 
 # -- Verify AlmaLinux 9 -------------------------------------------------------
 if ! grep -q "AlmaLinux" /etc/os-release; then
-    warn "This installer is tested on AlmaLinux 9 only. Proceed anyway? [y/N]"
-    read -r ans; [[ "$ans" =~ ^[Yy]$ ]] || exit 0
+    if [[ "$UNATTENDED" == "1" ]]; then
+        warn "Non-AlmaLinux host -- proceeding (unattended)."
+    else
+        warn "This installer is tested on AlmaLinux 9 only. Proceed anyway? [y/N]"
+        read -r ans; [[ "$ans" =~ ^[Yy]$ ]] || exit 0
+    fi
 fi
 
 # -- Gather info --------------------------------------------------------------
@@ -55,8 +78,12 @@ hr
 
 # Hostname
 CURRENT_HOST=$(hostname 2>/dev/null || echo "")
-read -rp "Hostname [${CURRENT_HOST}]: " INPUT_HOST
-HOSTNAME="${INPUT_HOST:-$CURRENT_HOST}"
+if [[ "$UNATTENDED" == "1" ]]; then
+    HOSTNAME="${ECDIALERS_HOSTNAME:-$CURRENT_HOST}"
+else
+    read -rp "Hostname [${CURRENT_HOST}]: " INPUT_HOST
+    HOSTNAME="${INPUT_HOST:-$CURRENT_HOST}"
+fi
 hostnamectl set-hostname "$HOSTNAME"
 
 # IP
@@ -64,12 +91,20 @@ SERVER_IP=$(hostname -I | awk '{print $1}')
 log "Detected IP: ${SERVER_IP}"
 
 # Timezone
-read -rp "Timezone [America/New_York]: " INPUT_TZ
-TIMEZONE="${INPUT_TZ:-America/New_York}"
+if [[ "$UNATTENDED" == "1" ]]; then
+    TIMEZONE="${ECDIALERS_TZ:-America/New_York}"
+else
+    read -rp "Timezone [America/New_York]: " INPUT_TZ
+    TIMEZONE="${INPUT_TZ:-America/New_York}"
+fi
 
 # DB password
-read -rp "MySQL cron user password [1234]: " INPUT_DBPASS
-DB_PASS="${INPUT_DBPASS:-1234}"
+if [[ "$UNATTENDED" == "1" ]]; then
+    DB_PASS="${ECDIALERS_DB_PASS:-1234}"
+else
+    read -rp "MySQL cron user password [1234]: " INPUT_DBPASS
+    DB_PASS="${INPUT_DBPASS:-1234}"
+fi
 
 echo ""
 log "Hostname   : ${HOSTNAME}"
@@ -78,7 +113,7 @@ log "Timezone   : ${TIMEZONE}"
 log "DB Pass    : ${DB_PASS}"
 echo ""
 warn "Starting installation. This will take 15-30 minutes."
-read -rp "Press Enter to continue or Ctrl+C to abort..."
+pause "Press Enter to continue or Ctrl+C to abort..."
 
 # -- Installer directory (definido una sola vez) -------------------------------
 INSTALLER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -335,7 +370,7 @@ modprobe dahdi_dummy 2>/dev/null || true
 systemctl enable dahdi 2>/dev/null || true
 systemctl start dahdi 2>/dev/null || service dahdi start 2>/dev/null || true
 
-read -rp "DAHDI done. Press Enter to continue with Asterisk..."
+pause "DAHDI done. Press Enter to continue with Asterisk..."
 
 # -- libsrtp ------------------------------------------------------------------
 hr; log "Installing libsrtp 2.1.0"
@@ -403,7 +438,7 @@ EOF
 # Verificar que Asterisk quedo instalado
 [ -f /usr/sbin/asterisk ] || die 'Asterisk not installed -- check compilation errors'
 log "Asterisk $(/usr/sbin/asterisk -V 2>/dev/null) instalado OK"
-read -rp "Asterisk done. Press Enter to continue with ViciDial..."
+pause "Asterisk done. Press Enter to continue with ViciDial..."
 
 # -- ViciDial (astguiclient) ---------------------------------------------------
 hr; log "Installing ViciDial (astguiclient trunk)"
@@ -426,7 +461,14 @@ if [ "$DB_EXISTS" -gt "10" ]; then
     echo -e "  ${BOLD}[2]${NC} Keep existing data (only add missing tables/users)"
     echo -e "  ${BOLD}[3]${NC} Cancel installation"
     echo ""
-    read -rp "  Select [1/2/3]: " DB_CHOICE
+    if [[ "$UNATTENDED" == "1" ]]; then
+        # Default to option 2 (keep data, add missing) so an unattended run never
+        # silently drops an existing database. Override with ECDIALERS_DB_CHOICE.
+        DB_CHOICE="${ECDIALERS_DB_CHOICE:-2}"
+        log "Unattended: DB option ${DB_CHOICE}"
+    else
+        read -rp "  Select [1/2/3]: " DB_CHOICE
+    fi
     case "$DB_CHOICE" in
         1)
             warn "Dropping asterisk database..."
@@ -1117,6 +1159,10 @@ echo -e "  5. SSL: bash /usr/src/ecdialers-install/certbot.sh"
 echo -e "  6. Review CSF rules: /etc/csf/csf.conf"
 echo ""
 hr
-read -rp "Press Enter to reboot..."
-reboot
-reboot
+if [[ "$UNATTENDED" == "1" ]]; then
+    warn "Unattended: install complete. A reboot is recommended -- run 'reboot' when ready."
+    warn "(auto-reboot skipped so the driving SSH session stays alive)."
+else
+    read -rp "Press Enter to reboot..."
+    reboot
+fi
